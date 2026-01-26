@@ -55,6 +55,15 @@ class RLAgent(Node):
         self.previous_action = 0
         self.done = False
         
+        # Sectors 
+        self.sectors = {
+            0: [(math.radians(330), math.radians(360)), (0.0, math.radians(30))], # Front
+            1:[(math.radians(30), math.radians(90))],                             # FL  
+            2: [(math.radians(270), math.radians(330))],                          # FR
+            3:[(math.radians(90), math.radians(150))],                            # L
+            4:[(math.radians(210), math.radians(270))],                           # R
+        }
+        
         # Episode Tracking
         self.episode_reward = 0
         self.step_count = 0
@@ -78,7 +87,62 @@ class RLAgent(Node):
         
         # Target Sector (0-7)
         self.target_sector = int((deg + 22.5) / 45.0) % 8
+        return relative_angle
     
+    # Peak Finder Algorithm - Paper
+    def peak_finder(self):
+        scan = self.scan_ranges_smoothed
+        N = len(scan)
+        peak_idx = []
+        for i in range(N):
+            # use %N not to exceed 
+            if scan[i] > scan[(i+1)%N] and scan[i] > scan[(i-1)%N]:
+                peak_idx.append(i)
+        
+        peak_idx = np.array(peak_idx, dtype=np.int32)
+        self.peak_angles = self.angle_min + peak_idx.astype(np.float32) * self.angle_increment
+        
+    
+    # Smooth the data 
+    def smooth_range_vals(self):
+        r = self.scan_ranges
+        
+        # Need to pad the data - Laser scan is circular (Angle 0 next to angle 359)
+        r_pad = np.r_[r[-5:], r, r[:5]]
+        
+        # Use a kernel with convolution - Moving average filter
+        kernel = np.ones(11, np.float32) / 11.0
+                    
+        self.scan_ranges_smoothed = np.convolve(r_pad, kernel, mode='same')[5:-5]
+    
+    def check_interval(self, angle, interval):
+        for lo, hi in interval:
+            if lo <= angle < hi:
+                return True
+        return False
+    
+    def update_lidar_state(self):
+        for angle in self.peak_angles:
+            angle = float(angle) % (2*np.pi)  # keep in [0, 2pi)
+            for idx, intervals in self.sectors.items():
+                if self.check_interval(angle, intervals):
+                    self.lidar_state[idx] = 1
+                
+    def target_visible(self):
+        theta = self.calculate_target_sector()
+        
+        dx = self.target_coords[0] - self.robot_pose['x']
+        dy = self.target_coords[1] - self.robot_pose['y']
+        
+        dT = np.hypot(dx, dy)
+        if theta < 0:
+            theta += 2*math.pi  # now in [0, 2pi)
+        
+        idx_target = int(round((theta - self.angle_min) / self.angle_increment))
+        lidar_reading = self.scan_ranges[idx_target]
+        
+        self.target_vis = 1 if (lidar_reading > dT) else 0
+        
     def scan_callback(self, msg):
         """
         Process LiDAR for:
@@ -86,7 +150,24 @@ class RLAgent(Node):
         2. Visibility Check (Paper Element 3)
         3. VFH Peaks / Open Sectors (Paper Element 1)
         """
+        self.lidar_state = [0] * self.num_lidar_bits # reset state before each scan
+        self.target_vis = 0 # reset target visible
+        self.scan_ranges = np.array(msg.ranges,  np.float32)
+        self.range_min = msg.range_min
+        self.range_max = msg.range_max
+        self.angle_increment = msg.angle_increment
+        
+        # Replace 'inf' values with range_max for peak finder algorithm
+        self.scan_ranges[~np.isfinite(self.scan_ranges)] = self.range_max
+        
+        # Clamp to sensor limits
+        self.scan_ranges = np.clip(self.scan_ranges, self.range_min, self.range_max)
 
+        self.smooth_range_vals()
+        self.peak_finder()
+        self.update_lidar_state()
+        self.target_visible()
+        
     def odom_callback(self, msg):
         self.robot_pose['x'] = msg.pose.pose.position.x
         self.robot_pose['y'] = msg.pose.pose.position.y
