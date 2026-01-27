@@ -15,7 +15,7 @@ class RLAgent(Node):
         super().__init__('rl_agent')
         
         # --- CONFIGURATION ---
-        self.target_coords = (2.0, 0.0)
+        self.target_coords = (1.5, 0.0)
         self.action_space = [0, 1, 2]  # Forward, Left, Right
         
         # --- STATE SPACE (512 States) ---
@@ -71,7 +71,7 @@ class RLAgent(Node):
         
         # --- SECTOR DEFINITIONS ---
         self.sectors = None
-        self.safe_distance_threshold = 0.5  # Peaks closer than this are walls
+        self.safe_distance_threshold = 0.5  # distance to obstacle threshold
         
         # --- REWARD SHAPING ---
         self.prev_dist = None
@@ -82,15 +82,15 @@ class RLAgent(Node):
         self.step_count = 0
         self.max_steps = 1000
         
+        self.max_episodes = 5000
+        
         self.episode_rewards = []
         self.episode_steps = []
         self.episode_successes = []
         self.episode_collisions = []
         self.episode_timeouts = []
         self.action_counts = {0: 0, 1: 0, 2: 0}
-        
-        # --- LOGGING ---
-        self.setup_logging()
+    
         
         # --- Q-TABLE PERSISTENCE ---
         self.q_table_dir = 'q_tables'
@@ -100,8 +100,13 @@ class RLAgent(Node):
         
         self.load_q_table()
         
-        # --- CONTROL LOOP ---
-        self.timer = self.create_timer(0.1, self.control_loop)
+        # --- LOGGING ---
+        self.setup_logging()
+        
+        # # --- CONTROL LOOP ---
+        # self.timer = self.create_timer(0.1, self.control_loop)
+        
+        self.reset_in_progress = False
         
         self.get_logger().info("=" * 60)
         self.get_logger().info("RL Agent Started (Paper's VFH Peak Finder)")
@@ -142,15 +147,27 @@ class RLAgent(Node):
 
     def _initialize_sectors(self):
         """
-        Initialize sector definitions.
-        Sectors: Front, Front-Left, Left, Right, Front-Right
+        Initialize sector definitions (Corrected).
+        Fixes:
+        1. Continuous boundaries (No 1-degree gaps).
+        2. Exact 180-degree FOV (36 degrees per sector).
+        3. Standard Spatially-Contiguous Indexing for easier debugging.
+        
+        Indices:
+        0: Far Left   (+54 to +90)
+        1: Left       (+18 to +54)
+        2: Front      (-18 to +18)  <-- CENTER
+        3: Right      (-54 to -18)
+        4: Far Right  (-90 to -54)
         """
+        # We use strict contiguous floats to ensure 22.5 falls into one bin.
+        # Ranges are in degrees (start, end)
         sector_definitions_deg = {
-            0: [(338, 22)],      # Front: -22° to +22°
-            1: [(23, 67)],       # Front-Left: 23° to 67°
-            2: [(68, 112)],      # Left: 68° to 112°
-            3: [(248, 292)],     # Right: 248° to 292°
-            4: [(293, 337)]      # Front-Right: 293° to 337°
+            0: [(54, 90)],       # Far Left
+            1: [(18, 54)],       # Left
+            2: [(342, 18)],      # Front (Handles wrap: 342->360 & 0->18)
+            3: [(306, 342)],     # Right
+            4: [(270, 306)]      # Far Right
         }
         
         self.sectors = {}
@@ -160,12 +177,13 @@ class RLAgent(Node):
                 start_rad = math.radians(start_deg)
                 end_rad = math.radians(end_deg)
                 
-                if start_deg > end_deg:  # Wraparound (e.g., 338 to 22)
+                # Handle Wraparound (e.g. Front Sector: 342 to 18)
+                if start_deg > end_deg:  
                     self.sectors[idx].append((start_rad, 2 * math.pi))
                     self.sectors[idx].append((0.0, end_rad))
                 else:
                     self.sectors[idx].append((start_rad, end_rad))
-        
+                    
         self.get_logger().info(f"✓ Sectors initialized. Safe distance: {self.safe_distance_threshold}m")
 
     def scan_callback(self, msg):
@@ -177,6 +195,10 @@ class RLAgent(Node):
             self.range_min = msg.range_min
             self.range_max = msg.range_max
             self._initialize_sectors()
+            
+        if self.reset_in_progress:
+        # If we were resetting, the first fresh scan clears the flag
+            self.reset_in_progress = False
         
         # Reset state
         self.lidar_state = [0] * self.num_lidar_bits
@@ -189,10 +211,13 @@ class RLAgent(Node):
         
         # Pipeline
         self._check_collision()           
-        self._smooth_range_vals()         
-        self._peak_finder()               
+        self._smooth_range_vals()                   
         self._update_lidar_state()        
-        self._target_visible()            
+        self._target_visible()
+        
+        # ADD THIS: Trigger the control loop immediately after we receive a new scan
+        if not self.done:  # Only act if we are still alive
+            self.control_loop()            
 
     def _check_collision(self):
         if np.min(self.scan_ranges) < 0.20:
@@ -206,21 +231,6 @@ class RLAgent(Node):
         r_pad = np.r_[r[-5:], r, r[:5]]
         kernel = np.ones(11, dtype=np.float32) / 11.0
         self.scan_ranges_smoothed = np.convolve(r_pad, kernel, mode='same')[5:-5]
-
-    def _peak_finder(self):
-        """
-        Finds local maxima (peaks) in smoothed data.
-        Stores both angle AND distance for each peak.
-        """
-        scan = self.scan_ranges_smoothed
-        N = len(scan)
-        self.peak_pairs = []  # Reset
-        
-        for i in range(N):
-            if scan[i] > scan[(i+1) % N] and scan[i] > scan[(i-1) % N]:
-                angle = self.angle_min + i * self.angle_increment
-                norm_angle = self._normalize_angle(angle)
-                self.peak_pairs.append((norm_angle, scan[i]))
 
     def _normalize_angle(self, angle):
         """Normalize angle to [0, 2π)"""
@@ -238,19 +248,53 @@ class RLAgent(Node):
 
     def _update_lidar_state(self):
         """
-        Map peaks to 5 sectors.
-        CRITICAL: Only peaks beyond safe_distance_threshold mark sectors as open.
-        """
-        if not self.peak_pairs:
-            return  # All sectors remain blocked (0)
+        Corrected Logic:
+        Instead of finding peaks (which fails on flat walls/open space),
+        we check the MINIMUM distance in each sector.
         
-        for angle, distance in self.peak_pairs:
-            # Only far peaks represent navigable space
-            if distance > self.safe_distance_threshold:
-                for idx, intervals in self.sectors.items():
-                    if self._check_interval(angle, intervals):
-                        self.lidar_state[idx] = 1
-                        break  # FIX: One peak belongs to one sector only
+        If min_dist < threshold -> Sector is BLOCKED (0)
+        If min_dist > threshold -> Sector is FREE (1)
+        """
+        # 1. Reset state
+        self.lidar_state = [0] * self.num_lidar_bits
+        
+        # 2. Map every laser ray to a sector
+        # We create a dictionary to hold all valid ranges for each sector
+        sector_ranges = {i: [] for i in range(self.num_lidar_bits)}
+        
+        N = len(self.scan_ranges_smoothed)
+        
+        for i in range(N):
+            # Calculate angle of this specific ray
+            angle = self.angle_min + i * self.angle_increment
+            norm_angle = self._normalize_angle(angle)
+            dist = self.scan_ranges_smoothed[i]
+            
+            # Check which sector this ray belongs to
+            for sector_idx, intervals in self.sectors.items():
+                if self._check_interval(norm_angle, intervals):
+                    sector_ranges[sector_idx].append(dist)
+                    break 
+        
+        # 3. Determine Binary State based on MINIMUM distance (Safety First)
+        for idx in range(self.num_lidar_bits):
+            readings = sector_ranges[idx]
+            
+            if not readings:
+                # No readings in this sector (rare, but possible with strange FOV)
+                # Assume clear or maintain previous state
+                self.lidar_state[idx] = 0 
+                continue
+                
+            # CRITICAL FIX: The Paper's "Occupancy" check.
+            # If the closest object is far away, the sector is FREE (1).
+            # If there is ANY object close by, it is OCCUPIED (0).
+            min_dist = np.min(readings)
+            
+            if min_dist > self.safe_distance_threshold:
+                self.lidar_state[idx] = 1  # Free
+            else:
+                self.lidar_state[idx] = 0  # Occupied
 
     def _target_visible(self):
         """
@@ -333,7 +377,7 @@ class RLAgent(Node):
         delta_dist = self.prev_dist - dist
         self.prev_dist = dist
         
-        shaped_reward = -1 + (10 * delta_dist)
+        shaped_reward = -1 + (100 * delta_dist)
         return shaped_reward, False
 
     def choose_action(self, state_idx):
@@ -358,7 +402,7 @@ class RLAgent(Node):
         self.action_counts[action] += 1
 
     def control_loop(self):
-        if self.scan_ranges is None or self.sectors is None:
+        if self.scan_ranges is None or self.sectors is None or self.reset_in_progress:
             return
         
         current_state_idx = self.get_state_index()
@@ -475,6 +519,7 @@ class RLAgent(Node):
         np.save(os.path.join(self.q_table_dir, 'q_table_latest.npy'), self.q_table)
 
     def reset_simulation(self):
+        self.reset_in_progress = True  # BLOCK the loop
         req = Empty.Request()
         while not self.reset_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().warn('Reset service not available, waiting...')
