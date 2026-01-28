@@ -15,7 +15,7 @@ class RLAgent(Node):
         super().__init__('rl_agent')
         
         # --- CONFIGURATION ---
-        self.target_coords = (1.5, 0.0)
+        self.target_coords = (2.5, 0.5)
         self.action_space = [0, 1, 2]  # Forward, Left, Right
         
         # --- STATE SPACE (512 States) ---
@@ -103,10 +103,8 @@ class RLAgent(Node):
         # --- LOGGING ---
         self.setup_logging()
         
-        # # --- CONTROL LOOP ---
-        # self.timer = self.create_timer(0.1, self.control_loop)
-        
-        self.reset_in_progress = False
+        # --- CONTROL LOOP ---
+        self.timer = self.create_timer(0.18, self.control_loop)
         
         self.get_logger().info("=" * 60)
         self.get_logger().info("RL Agent Started (Paper's VFH Peak Finder)")
@@ -195,10 +193,6 @@ class RLAgent(Node):
             self.range_min = msg.range_min
             self.range_max = msg.range_max
             self._initialize_sectors()
-            
-        if self.reset_in_progress:
-        # If we were resetting, the first fresh scan clears the flag
-            self.reset_in_progress = False
         
         # Reset state
         self.lidar_state = [0] * self.num_lidar_bits
@@ -213,11 +207,7 @@ class RLAgent(Node):
         self._check_collision()           
         self._smooth_range_vals()                   
         self._update_lidar_state()        
-        self._target_visible()
-        
-        # ADD THIS: Trigger the control loop immediately after we receive a new scan
-        if not self.done:  # Only act if we are still alive
-            self.control_loop()            
+        self._target_visible()            
 
     def _check_collision(self):
         if np.min(self.scan_ranges) < 0.20:
@@ -388,21 +378,22 @@ class RLAgent(Node):
 
     def execute_action(self, action):
         msg = Twist()
-        if action == 0:   # Forward
-            msg.linear.x = 0.22
+        
+        if action == 0:    # Forward
+            msg.linear.x = 0.12
             msg.angular.z = 0.0
-        elif action == 1: # Left
-            msg.linear.x = 0.1
-            msg.angular.z = 0.8
-        elif action == 2: # Right
-            msg.linear.x = 0.1
-            msg.angular.z = -0.8
+        elif action == 1:  # Left (with slight forward motion)
+            msg.linear.x = 0.03
+            msg.angular.z = 0.4
+        elif action == 2:  # Right (with slight forward motion)
+            msg.linear.x = 0.03
+            msg.angular.z = -0.4
         
         self.cmd_pub.publish(msg)
         self.action_counts[action] += 1
 
     def control_loop(self):
-        if self.scan_ranges is None or self.sectors is None or self.reset_in_progress:
+        if self.scan_ranges is None or self.sectors is None:
             return
         
         current_state_idx = self.get_state_index()
@@ -519,7 +510,6 @@ class RLAgent(Node):
         np.save(os.path.join(self.q_table_dir, 'q_table_latest.npy'), self.q_table)
 
     def reset_simulation(self):
-        self.reset_in_progress = True  # BLOCK the loop
         req = Empty.Request()
         while not self.reset_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().warn('Reset service not available, waiting...')
