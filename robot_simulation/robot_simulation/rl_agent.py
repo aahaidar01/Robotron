@@ -1,3 +1,4 @@
+import time
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan 
@@ -8,11 +9,13 @@ import numpy as np
 import math
 import os
 from datetime import datetime
+import argparse
 
 class RLAgent(Node):
 
-    def __init__(self):
+    def __init__(self, checkpoint=None):
         super().__init__('rl_agent')
+        
         
         # --- CONFIGURATION ---
         self.target_coords = (2.5, 0.5)
@@ -67,7 +70,8 @@ class RLAgent(Node):
         self.angle_increment = None
         self.range_min = 0.15
         self.range_max = 12.0
-        self.peak_pairs = []  # Stores (angle, distance) of peaks
+        
+        self.scans_since_reset = 0
         
         # --- SECTOR DEFINITIONS ---
         self.sectors = None
@@ -93,12 +97,26 @@ class RLAgent(Node):
     
         
         # --- Q-TABLE PERSISTENCE ---
-        self.q_table_dir = 'q_tables'
         self.log_dir = 'training_logs'
-        os.makedirs(self.q_table_dir, exist_ok=True)
         os.makedirs(self.log_dir, exist_ok=True)
         
+        self.log_dir = 'training_logs'
+        os.makedirs(self.log_dir, exist_ok=True)
+
+        self.checkpoint = checkpoint
+        if self.checkpoint == 'fresh':
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.q_table_dir = f'q_tables/run_{timestamp}'
+            os.makedirs(self.q_table_dir, exist_ok=True)
+            self.get_logger().info(f"Starting fresh: {self.q_table_dir}")
+        else:
+            # checkpoint is full path like "run_20250128_143022/q_table_ep500.npy"
+            self.q_table_dir = os.path.join('q_tables', os.path.dirname(checkpoint))
+            if not os.path.exists(self.q_table_dir):
+                raise FileNotFoundError(f"Run folder not found: {self.q_table_dir}")
+        
         self.load_q_table()
+        
         
         # --- LOGGING ---
         self.setup_logging()
@@ -107,7 +125,7 @@ class RLAgent(Node):
         self.timer = self.create_timer(0.18, self.control_loop)
         
         self.get_logger().info("=" * 60)
-        self.get_logger().info("RL Agent Started (Paper's VFH Peak Finder)")
+        self.get_logger().info("RL Agent Started")
         self.get_logger().info(f"Target: {self.target_coords}")
         self.get_logger().info(f"State Space: {self.num_states} states")
         self.get_logger().info("=" * 60)
@@ -118,7 +136,7 @@ class RLAgent(Node):
         
         with open(self.log_filename, 'w') as f:
             f.write("=" * 80 + "\n")
-            f.write("VFH-QL Training Log (Paper Implementation)\n")
+            f.write("VFH-QL Training Log\n")
             f.write(f"Started: {timestamp}\n")
             f.write(f"Target: {self.target_coords}\n")
             f.write(f"Hyperparameters: α={self.alpha}, γ={self.gamma}, ε_decay={self.epsilon_decay}\n")
@@ -126,22 +144,32 @@ class RLAgent(Node):
             f.write("Episode,Steps,Reward,Success,Collision,Timeout,Epsilon,Alpha,Fwd,Left,Right\n")
 
     def load_q_table(self):
-        q_table_files = [f for f in os.listdir(self.q_table_dir) if f.startswith('q_table_ep')]
+        if self.checkpoint == 'fresh':
+            self.get_logger().info("Starting fresh training (no checkpoint loaded)")
+            return
         
-        if q_table_files:
-            latest_file = sorted(q_table_files)[-1]
-            filepath = os.path.join(self.q_table_dir, latest_file)
+        filepath = os.path.join('q_tables', self.checkpoint)
+        
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Checkpoint not found: {filepath}")
+        
+        try:
+            loaded_table = np.load(filepath)
             
-            try:
-                self.q_table = np.load(filepath)
-                episode_num = int(latest_file.split('ep')[1].split('.')[0])
-                self.episode_num = episode_num
-                self.epsilon = max(self.epsilon_min, 1.0 * (self.epsilon_decay ** episode_num))
-                
-                self.get_logger().info(f"✓ Loaded Q-table from {latest_file}")
-                self.get_logger().info(f"✓ Resuming from Episode {episode_num}, ε={self.epsilon:.3f}")
-            except Exception as e:
-                self.get_logger().warn(f"Failed to load Q-table: {e}")
+            if loaded_table.shape != self.q_table.shape:
+                raise ValueError(f"Shape mismatch: {loaded_table.shape} vs {self.q_table.shape}")
+            
+            self.q_table = loaded_table
+            episode_num = int(os.path.basename(filepath).split('ep')[1].split('.')[0])
+            self.episode_num = episode_num
+            self.epsilon = max(self.epsilon_min, 1.0 * (self.epsilon_decay ** episode_num))
+            self.alpha = max(self.alpha_min, 0.1 * (self.alpha_decay ** episode_num))
+            
+            self.get_logger().info(f"✓ Loaded: {self.checkpoint}")
+            self.get_logger().info(f"✓ Episode {episode_num}, ε={self.epsilon:.3f}, α={self.alpha:.4f}")
+            
+        except Exception as e:
+            raise RuntimeError(f"Failed to load Q-table: {e}")
 
     def _initialize_sectors(self):
         """
@@ -203,6 +231,7 @@ class RLAgent(Node):
         self.scan_ranges[~np.isfinite(self.scan_ranges)] = self.range_max
         self.scan_ranges = np.clip(self.scan_ranges, self.range_min, self.range_max)
         
+    
         # Pipeline
         self._check_collision()           
         self._smooth_range_vals()                   
@@ -210,6 +239,13 @@ class RLAgent(Node):
         self._target_visible()            
 
     def _check_collision(self):
+        
+        #Disregard the first 3 readings to make sure the sensor is stable        
+        if self.scans_since_reset < 3:
+            self.scans_since_reset += 1
+            return
+        
+        
         if np.min(self.scan_ranges) < 0.20:
             self.done = True
             stop_msg = Twist()
@@ -351,6 +387,7 @@ class RLAgent(Node):
         return state_idx
 
     def get_reward(self):
+        #TODO: try the paper's definition of the reward function
         dist = math.sqrt(
             (self.target_coords[0] - self.robot_pose['x'])**2 + 
             (self.target_coords[1] - self.robot_pose['y'])**2
@@ -380,13 +417,13 @@ class RLAgent(Node):
         msg = Twist()
         
         if action == 0:    # Forward
-            msg.linear.x = 0.12
+            msg.linear.x = 0.18
             msg.angular.z = 0.0
         elif action == 1:  # Left (with slight forward motion)
-            msg.linear.x = 0.03
+            msg.linear.x = 0.1
             msg.angular.z = 0.4
         elif action == 2:  # Right (with slight forward motion)
-            msg.linear.x = 0.03
+            msg.linear.x = 0.1
             msg.angular.z = -0.4
         
         self.cmd_pub.publish(msg)
@@ -394,6 +431,9 @@ class RLAgent(Node):
 
     def control_loop(self):
         if self.scan_ranges is None or self.sectors is None:
+            return
+        
+        if self.scans_since_reset < 3:
             return
         
         current_state_idx = self.get_state_index()
@@ -514,7 +554,13 @@ class RLAgent(Node):
         while not self.reset_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().warn('Reset service not available, waiting...')
         
-        self.reset_client.call_async(req)
+        future = self.reset_client.call_async(req)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+        
+        time.sleep(0.5)
+        
+        self.scan_ranges = None
+        self.scans_since_reset = 0
         
         self.done = False
         self.step_count = 0
@@ -522,8 +568,6 @@ class RLAgent(Node):
         self.previous_state_idx = 0
         self.previous_action = 0
         self.prev_dist = None
-        
-        # FIX: Reset action counts EVERY episode
         self.action_counts = {0: 0, 1: 0, 2: 0}
         
         if self.epsilon > self.epsilon_min:
@@ -532,17 +576,38 @@ class RLAgent(Node):
             self.alpha *= self.alpha_decay
 
 def main(args=None):
-    rclpy.init(args=args)
-    node = RLAgent()
+    parser = argparse.ArgumentParser(description='VFH-QL Training')
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--fresh', action='store_true', help='Start fresh training')
+    group.add_argument('--checkpoint', type=str, help='Checkpoint to load (filename or "latest")')
+    
+    parsed_args, ros_args = parser.parse_known_args()
+    
+    rclpy.init(args=ros_args)
+    
+    if parsed_args.fresh:
+        checkpoint = 'fresh'
+    elif parsed_args.checkpoint == 'latest':
+        checkpoint = None  # triggers latest loading
+    else:
+        checkpoint = parsed_args.checkpoint
+    
     try:
+        node = RLAgent(checkpoint=checkpoint)
         rclpy.spin(node)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"Error: {e}")
+        rclpy.shutdown()
+        return
     except KeyboardInterrupt:
         node.get_logger().info("Training interrupted by user.")
     finally:
-        node.save_q_table()
-        node.get_logger().info("Final Q-table saved. Shutting down...")
-        node.destroy_node()
+        if 'node' in locals():
+            node.save_q_table()
+            node.get_logger().info("Final Q-table saved. Shutting down...")
+            node.destroy_node()
         rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()
