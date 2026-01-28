@@ -5,13 +5,13 @@
     <include>
       <uri>model://sun</uri>
     </include>
-
     <include>
       <uri>model://ground_plane</uri>
     </include>
 
+    <!-- Physics tuned for TurtleBot3 -->
     <physics type="ode">
-      <real_time_update_rate>0.0</real_time_update_rate> 
+      <real_time_update_rate>1000.0</real_time_update_rate>
       <max_step_size>0.001</max_step_size>
       <real_time_factor>1</real_time_factor>
       <ode>
@@ -31,82 +31,246 @@
       </ode>
     </physics>
 
+    <!-- ROS2 Plugins -->
+    <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so">
+      <ros>
+        <namespace>/</namespace>
+      </ros>
+    </plugin>
+    <plugin name="gazebo_ros_factory" filename="libgazebo_ros_factory.so">
+      <ros>
+        <namespace>/</namespace>
+      </ros>
+    </plugin>
+
+    <!-- ========== ROOM WALLS (8m x 6m) ========== -->
+    <!-- Larger room gives more exploration space for Q-learning -->
+    
     <model name='wall_north'>
-      <pose>0 2 0.25 0 0 0</pose> <static>true</static>
+      <pose>0 3 0.25 0 0 0</pose>
+      <static>true</static>
       <link name='link'>
-        <collision name='collision'><geometry><box><size>4 0.1 0.5</size></box></geometry></collision>
+        <collision name='collision'>
+          <geometry><box><size>8 0.15 0.5</size></box></geometry>
+        </collision>
         <visual name='visual'>
-          <geometry><box><size>4 0.1 0.5</size></box></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Wood</name></script></material>
+          <geometry><box><size>8 0.15 0.5</size></box></geometry>
+          <material>
+            <ambient>0.5 0.35 0.2 1</ambient>
+            <diffuse>0.6 0.4 0.25 1</diffuse>
+          </material>
         </visual>
       </link>
     </model>
 
     <model name='wall_south'>
-      <pose>0 -2 0.25 0 0 0</pose> <static>true</static>
+      <pose>0 -3 0.25 0 0 0</pose>
+      <static>true</static>
       <link name='link'>
-        <collision name='collision'><geometry><box><size>4 0.1 0.5</size></box></geometry></collision>
+        <collision name='collision'>
+          <geometry><box><size>8 0.15 0.5</size></box></geometry>
+        </collision>
         <visual name='visual'>
-          <geometry><box><size>4 0.1 0.5</size></box></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Wood</name></script></material>
+          <geometry><box><size>8 0.15 0.5</size></box></geometry>
+          <material>
+            <ambient>0.5 0.35 0.2 1</ambient>
+            <diffuse>0.6 0.4 0.25 1</diffuse>
+          </material>
         </visual>
       </link>
     </model>
 
     <model name='wall_east'>
-      <pose>2 0 0.25 0 0 1.5708</pose> <static>true</static>
+      <pose>4 0 0.25 0 0 1.5708</pose>
+      <static>true</static>
       <link name='link'>
-        <collision name='collision'><geometry><box><size>4 0.1 0.5</size></box></geometry></collision>
+        <collision name='collision'>
+          <geometry><box><size>6 0.15 0.5</size></box></geometry>
+        </collision>
         <visual name='visual'>
-          <geometry><box><size>4 0.1 0.5</size></box></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Wood</name></script></material>
+          <geometry><box><size>6 0.15 0.5</size></box></geometry>
+          <material>
+            <ambient>0.5 0.35 0.2 1</ambient>
+            <diffuse>0.6 0.4 0.25 1</diffuse>
+          </material>
         </visual>
       </link>
     </model>
 
     <model name='wall_west'>
-      <pose>-2 0 0.25 0 0 1.5708</pose> <static>true</static>
+      <pose>-4 0 0.25 0 0 1.5708</pose>
+      <static>true</static>
       <link name='link'>
-        <collision name='collision'><geometry><box><size>4 0.1 0.5</size></box></geometry></collision>
+        <collision name='collision'>
+          <geometry><box><size>6 0.15 0.5</size></box></geometry>
+        </collision>
         <visual name='visual'>
-          <geometry><box><size>4 0.1 0.5</size></box></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Wood</name></script></material>
+          <geometry><box><size>6 0.15 0.5</size></box></geometry>
+          <material>
+            <ambient>0.5 0.35 0.2 1</ambient>
+            <diffuse>0.6 0.4 0.25 1</diffuse>
+          </material>
         </visual>
       </link>
     </model>
 
-    <model name='obstacle_center'>
-      <pose>0.7 0 0.25 0 0 0</pose>
+    <!-- ========== OBSTACLES (distributed across room) ========== -->
+    <!-- Clear zone around origin: nothing within ~1.2m of (0,0) -->
+    
+    <!-- Quadrant 1 (positive x, positive y) -->
+    <model name='obstacle_q1_a'>
+      <pose>2.0 1.5 0.25 0 0 0</pose>
       <static>true</static>
       <link name='link'>
-        <collision name='collision'><geometry><box><size>0.4 0.4 0.5</size></box></geometry></collision>
+        <collision name='collision'>
+          <geometry><box><size>0.4 0.4 0.5</size></box></geometry>
+        </collision>
         <visual name='visual'>
           <geometry><box><size>0.4 0.4 0.5</size></box></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Red</name></script></material>
+          <material>
+            <ambient>0.8 0.2 0.2 1</ambient>
+            <diffuse>0.9 0.3 0.3 1</diffuse>
+          </material>
         </visual>
       </link>
     </model>
 
-    <model name='obstacle_top'>
-      <pose>0.7 1.0 0.25 0 0 0</pose>
+    <!-- Quadrant 2 (negative x, positive y) -->
+    <model name='obstacle_q2_a'>
+      <pose>-2.5 1.8 0.25 0 0 0</pose>
       <static>true</static>
       <link name='link'>
-        <collision name='collision'><geometry><box><size>0.4 0.4 0.5</size></box></geometry></collision>
+        <collision name='collision'>
+          <geometry><box><size>0.5 0.3 0.5</size></box></geometry>
+        </collision>
         <visual name='visual'>
-          <geometry><box><size>0.4 0.4 0.5</size></box></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Blue</name></script></material>
+          <geometry><box><size>0.5 0.3 0.5</size></box></geometry>
+          <material>
+            <ambient>0.2 0.2 0.8 1</ambient>
+            <diffuse>0.3 0.3 0.9 1</diffuse>
+          </material>
         </visual>
       </link>
     </model>
 
-    <model name='obstacle_bottom'>
-      <pose>1.2 -0.8 0.25 0 0 0</pose>
+    <model name='obstacle_q2_b'>
+      <pose>-1.5 0.8 0.25 0 0 0.4</pose>
       <static>true</static>
       <link name='link'>
-        <collision name='collision'><geometry><box><size>0.4 0.4 0.5</size></box></geometry></collision>
+        <collision name='collision'>
+          <geometry><box><size>0.6 0.3 0.5</size></box></geometry>
+        </collision>
+        <visual name='visual'>
+          <geometry><box><size>0.6 0.3 0.5</size></box></geometry>
+          <material>
+            <ambient>0.8 0.6 0.2 1</ambient>
+            <diffuse>0.9 0.7 0.3 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Quadrant 3 (negative x, negative y) -->
+    <model name='obstacle_q3_a'>
+      <pose>-2.0 -1.5 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name='link'>
+        <collision name='collision'>
+          <geometry><box><size>0.4 0.4 0.5</size></box></geometry>
+        </collision>
         <visual name='visual'>
           <geometry><box><size>0.4 0.4 0.5</size></box></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Blue</name></script></material>
+          <material>
+            <ambient>0.8 0.2 0.2 1</ambient>
+            <diffuse>0.9 0.3 0.3 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Quadrant 4 (positive x, negative y) -->
+    <model name='obstacle_q4_a'>
+      <pose>1.8 -1.2 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name='link'>
+        <collision name='collision'>
+          <geometry><box><size>0.35 0.35 0.5</size></box></geometry>
+        </collision>
+        <visual name='visual'>
+          <geometry><box><size>0.35 0.35 0.5</size></box></geometry>
+          <material>
+            <ambient>0.2 0.2 0.8 1</ambient>
+            <diffuse>0.3 0.3 0.9 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name='obstacle_q4_b'>
+      <pose>2.8 -2.0 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name='link'>
+        <collision name='collision'>
+          <geometry><box><size>0.4 0.4 0.5</size></box></geometry>
+        </collision>
+        <visual name='visual'>
+          <geometry><box><size>0.4 0.4 0.5</size></box></geometry>
+          <material>
+            <ambient>0.8 0.6 0.2 1</ambient>
+            <diffuse>0.9 0.7 0.3 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Central corridor obstacle (forces path planning) -->
+    <model name='obstacle_corridor'>
+      <pose>0.0 -1.8 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name='link'>
+        <collision name='collision'>
+          <geometry><box><size>1.2 0.25 0.5</size></box></geometry>
+        </collision>
+        <visual name='visual'>
+          <geometry><box><size>1.2 0.25 0.5</size></box></geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.6 0.6 0.6 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ========== TARGET MARKER ========== -->
+    <!-- Placed with clear approach paths from multiple directions -->
+    <model name='target_mark'>
+      <pose>2.5 0.5 0.01 0 0 0</pose>
+      <static>true</static>
+      <link name='link'>
+        <!-- Flat cylinder on ground (no collision - robot can drive over) -->
+        <visual name='visual'>
+          <geometry><cylinder><radius>0.3</radius><length>0.02</length></cylinder></geometry>
+          <material>
+            <ambient>0.1 0.8 0.1 1</ambient>
+            <diffuse>0.2 0.9 0.2 1</diffuse>
+            <emissive>0.05 0.3 0.05 1</emissive>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Optional: Visual marker above target for easier spotting -->
+    <model name='target_beacon'>
+      <pose>2.5 0.5 0.5 0 0 0</pose>
+      <static>true</static>
+      <link name='link'>
+        <visual name='visual'>
+          <geometry><sphere><radius>0.08</radius></sphere></geometry>
+          <material>
+            <ambient>0.1 0.9 0.1 1</ambient>
+            <diffuse>0.2 1.0 0.2 1</diffuse>
+            <emissive>0.1 0.5 0.1 1</emissive>
+          </material>
         </visual>
       </link>
     </model>
