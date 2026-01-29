@@ -30,6 +30,7 @@ setup(
     entry_points={
         'console_scripts': [
             'rl_agent = robot_simulation.rl_agent:main',
+            'lidar_debug = robot_simulation.lidar:main',
         ],
     },
 )
