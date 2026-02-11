@@ -33,7 +33,7 @@ class RLAgent(Node):
         self.alpha = 0.1       # Learning Rate
         self.gamma = 0.95      # Discount Factor
         self.epsilon = 1.0     # Exploration Rate
-        self.epsilon_decay = 0.998 # Slower decay for better learning
+        self.epsilon_decay = 0.9995 # Slower decay for better learning
         self.epsilon_min = 0.05
         
         self.alpha_decay = 0.9995
@@ -80,13 +80,18 @@ class RLAgent(Node):
         # --- REWARD SHAPING ---
         self.prev_dist = None
         
+        # --- VFH-QL REWARD CONFIGURATION ---
+        self.reward_mode = 'hybrid'  # 'paper' or 'hybrid'
+        self.action_history = []
+        self.max_action_history = 3
+        
         # --- EPISODE TRACKING ---
         self.episode_num = 0
         self.episode_reward = 0
         self.step_count = 0
-        self.max_steps = 1000
+        self.max_steps = 1500
         
-        self.max_episodes = 5000
+        self.max_episodes = 10000
         
         self.episode_rewards = []
         self.episode_steps = []
@@ -385,27 +390,106 @@ class RLAgent(Node):
         
         state_idx = (lidar_int * 16) + (self.target_vis * 8) + self.target_sector
         return state_idx
+    
+
+    def _is_action_open(self, action):
+        """Check if action direction leads to an open way (VFH Criterion 1)."""
+        if action == 0:  # Forward
+            return self.lidar_state[2] == 1
+        elif action == 1:  # Turn Left
+            return self.lidar_state[1] == 1 or self.lidar_state[0] == 1
+        elif action == 2:  # Turn Right
+            return self.lidar_state[3] == 1 or self.lidar_state[4] == 1
+        return False
+
+    def _get_optimal_open_action(self):
+        """Find the open action closest to target direction (VFH Criterion 2)."""
+        sector_action_priority = {
+            0: [0, 1, 2],  # Target ahead
+            1: [1, 0, 2],  # Target left-front
+            2: [1, 0, 2],  # Target left
+            3: [1, 2, 0],  # Target left-back
+            4: [1, 2, 0],  # Target behind
+            5: [2, 1, 0],  # Target right-back
+            6: [2, 0, 1],  # Target right
+            7: [0, 2, 1],  # Target right-front
+        }
+        
+        priority_list = sector_action_priority.get(self.target_sector, [0, 1, 2])
+        
+        for action in priority_list:
+            if self._is_action_open(action):
+                return action
+        return 0
+
+    def _get_action_angle_difference(self, action1, action2):
+        """Get angle difference between two actions in degrees."""
+        action_angles = {0: 0, 1: 60, 2: -60}
+        diff = abs(action_angles.get(action1, 0) - action_angles.get(action2, 0))
+        return min(diff, 360 - diff)
+
+    def _check_oscillation(self):
+        """Check if robot is oscillating (L-R-L or R-L-R pattern)."""
+        if len(self.action_history) < 3:
+            return False
+        last_3 = self.action_history[-3:]
+        if last_3[0] in [1, 2] and last_3[1] in [1, 2] and last_3[2] in [1, 2]:
+            if last_3[0] != last_3[1] and last_3[1] != last_3[2] and last_3[0] == last_3[2]:
+                return True
+        return False
+
 
     def get_reward(self):
-        #TODO: try the paper's definition of the reward function
+        """VFH-QL Reward Function """
         dist = math.sqrt(
             (self.target_coords[0] - self.robot_pose['x'])**2 + 
             (self.target_coords[1] - self.robot_pose['y'])**2
         )
         
+        # --- TERMINAL CONDITIONS ---
         if self.done:
-            return -100, True
+            return -50.0, True
         if dist < 0.3:
-            return 300, True
+            return 250.0, True
         
-        if self.prev_dist is None:
-            self.prev_dist = dist
+        # --- VFH-GUIDED ACTION REWARD ---
+        action = self.previous_action
+        reward = 0.0
         
-        delta_dist = self.prev_dist - dist
+        action_is_open = self._is_action_open(action)
+        
+        if not action_is_open:
+            reward += -5.0
+        else:
+            optimal_action = self._get_optimal_open_action()
+            if action == optimal_action:
+                reward += -1.0
+            else:
+                angle_diff = self._get_action_angle_difference(action, optimal_action)
+                penalty = -2.0 - (angle_diff / 90.0) * 3.0
+                penalty = max(-5.0, min(-2.0, penalty))
+                reward += penalty
+        
+        # --- HYBRID MODE ADDITIONS ---
+        if self.reward_mode == 'hybrid':
+            if self.prev_dist is not None:
+                delta_dist = self.prev_dist - dist
+                
+                # If VFH says "Go Away", don't punish moving away!
+                if action == optimal_action and delta_dist < 0:
+                     # Ignore distance penalty if we are following optimal path
+                     reward += 0.0 
+                else:
+                     reward += 20.0 * delta_dist
+            
+            if self.target_vis == 1:
+                reward += 1.0
+            
+            if self._check_oscillation():
+                reward += -3.0
+        
         self.prev_dist = dist
-        
-        shaped_reward = -1 + (100 * delta_dist)
-        return shaped_reward, False
+        return reward, False
 
     def choose_action(self, state_idx):
         if np.random.uniform(0, 1) < self.epsilon:
@@ -426,6 +510,12 @@ class RLAgent(Node):
             msg.linear.x = 0.1
             msg.angular.z = -0.4
         
+        # Track action history for anti-oscillation
+        self.action_history.append(action)
+        if len(self.action_history) > self.max_action_history:
+            self.action_history.pop(0)
+            
+            
         self.cmd_pub.publish(msg)
         self.action_counts[action] += 1
 
@@ -569,6 +659,8 @@ class RLAgent(Node):
         self.previous_action = 0
         self.prev_dist = None
         self.action_counts = {0: 0, 1: 0, 2: 0}
+        
+        self.action_history = []
         
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
