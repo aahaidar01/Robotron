@@ -11,7 +11,7 @@ def generate_launch_description():
     
     # 1. Path to our custom world and urdf
     world_file = os.path.join(
-        get_package_share_directory(pkg_name), 'worlds', 'my_world.world')
+        get_package_share_directory(pkg_name), 'worlds', 'maze.world')
     urdf_file = os.path.join(
         get_package_share_directory(pkg_name), 'urdf', 'my_robot.urdf')
 
@@ -37,7 +37,7 @@ def generate_launch_description():
     spawn_entity = Node(
         package='gazebo_ros',
         executable='spawn_entity.py',
-        arguments=['-entity', 'my_turtlebot', '-file', urdf_file, '-x', '0', '-y', '0', '-z', '0.1','-timeout', '60'],
+        arguments=['-entity', 'my_turtlebot', '-file', urdf_file, '-x', '-2.2', '-y', '-1', '-z', '0.1','-timeout', '60'],
         output='screen'
     )
     
