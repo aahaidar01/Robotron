@@ -33,7 +33,7 @@ class RLAgent(Node):
         self.alpha = 0.1       # Learning Rate
         self.gamma = 0.95      # Discount Factor
         self.epsilon = 1.0     # Exploration Rate
-        self.epsilon_decay = 0.9995 # Slower decay for better learning
+        self.epsilon_decay = 0.9990 # Slower decay for better learning
         self.epsilon_min = 0.05
         
         self.alpha_decay = 0.9995
@@ -75,7 +75,7 @@ class RLAgent(Node):
         
         # --- SECTOR DEFINITIONS ---
         self.sectors = None
-        self.safe_distance_threshold = 0.5  # distance to obstacle threshold
+        self.safe_distance_threshold = 0.35  # distance to obstacle threshold
         
         # --- REWARD SHAPING ---
         self.prev_dist = None
@@ -89,7 +89,7 @@ class RLAgent(Node):
         self.episode_num = 0
         self.episode_reward = 0
         self.step_count = 0
-        self.max_steps = 1500
+        self.max_steps = 2500
         
         self.max_episodes = 10000
         
@@ -440,7 +440,7 @@ class RLAgent(Node):
 
 
     def get_reward(self):
-        """VFH-QL Reward Function """
+        """VFH-QL Reward Function (Modified for Trap Safety)"""
         dist = math.sqrt(
             (self.target_coords[0] - self.robot_pose['x'])**2 + 
             (self.target_coords[1] - self.robot_pose['y'])**2
@@ -452,30 +452,28 @@ class RLAgent(Node):
         if dist < 0.3:
             return 250.0, True
         
-        # --- VFH-GUIDED ACTION REWARD ---
         action = self.previous_action
         reward = 0.0
         
+        optimal_action = self._get_optimal_open_action()
         action_is_open = self._is_action_open(action)
         
+        # --- VFH Logic ---
         if not action_is_open:
             reward += -5.0
         else:
-            optimal_action = self._get_optimal_open_action()
             if action == optimal_action:
                 reward += -1.0
             else:
                 angle_diff = self._get_action_angle_difference(action, optimal_action)
                 penalty = -2.0 - (angle_diff / 90.0) * 3.0
-                penalty = max(-5.0, min(-2.0, penalty))
-                reward += penalty
+                reward += max(-5.0, penalty)
         
-        # --- HYBRID MODE ADDITIONS ---
+        # --- Hybrid Logic (Trap Safe) ---
         if self.reward_mode == 'hybrid':
             if self.prev_dist is not None:
                 delta_dist = self.prev_dist - dist
                 
-                # If VFH says "Go Away", don't punish moving away!
                 if action == optimal_action and delta_dist < 0:
                      # Ignore distance penalty if we are following optimal path
                      reward += 0.0 
@@ -497,18 +495,19 @@ class RLAgent(Node):
         else:
             return np.argmax(self.q_table[state_idx])
 
+    
     def execute_action(self, action):
         msg = Twist()
         
         if action == 0:    # Forward
-            msg.linear.x = 0.18
+            msg.linear.x = 0.18   # Safe speed for maze
             msg.angular.z = 0.0
-        elif action == 1:  # Left (with slight forward motion)
-            msg.linear.x = 0.1
-            msg.angular.z = 0.4
-        elif action == 2:  # Right (with slight forward motion)
-            msg.linear.x = 0.1
-            msg.angular.z = -0.4
+        elif action == 1:  # Pivot Left (Zero Radius)
+            msg.linear.x = 0.0    # STOP moving forward
+            msg.angular.z = 0.5   # Spin only
+        elif action == 2:  # Pivot Right (Zero Radius)
+            msg.linear.x = 0.0    # STOP moving forward
+            msg.angular.z = -0.5  # Spin only
         
         # Track action history for anti-oscillation
         self.action_history.append(action)

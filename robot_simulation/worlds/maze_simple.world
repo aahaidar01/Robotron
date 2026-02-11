@@ -61,7 +61,7 @@
       <link name='Wall_26'><pose>-0.624 0.253 0 0 0 0</pose><collision name='Wall_26_Collision'><geometry><box><size>1 0.15 0.75</size></box></geometry></collision><visual name='Wall_26_Visual'><geometry><box><size>1 0.15 0.75</size></box></geometry><material><ambient>0 0 0 1</ambient><diffuse>0 0 0 1</diffuse></material></visual></link>
       <link name='Wall_29'><pose>-0.489 -1.510 0 0 0 0</pose><collision name='Wall_29_Collision'><geometry><box><size>1 0.15 0.75</size></box></geometry></collision><visual name='Wall_29_Visual'><geometry><box><size>1 0.15 0.75</size></box></geometry><material><ambient>0 0 0 1</ambient><diffuse>0 0 0 1</diffuse></material></visual></link>
       <link name='Wall_6'><pose>-1.764 -0.960 0 0 0 -1.5708</pose><collision name='Wall_6_Collision'><geometry><box><size>1.25 0.15 0.75</size></box></geometry></collision><visual name='Wall_6_Visual'><geometry><box><size>1.25 0.15 0.75</size></box></geometry><material><ambient>0 0 0 1</ambient><diffuse>0 0 0 1</diffuse></material></visual></link>
-      <link name='Wall_8'><pose>-1.049 1.953 0 0 0 -1.5708</pose><collision name='Wall_8_Collision'><geometry><box><size>1 0.15 0.75</size></box></geometry></collision><visual name='Wall_8_Visual'><geometry><box><size>1 0.15 0.75</size></box></geometry><material><ambient>0 0 0 1</ambient><diffuse>0 0 0 1</diffuse></material></visual></link>
+      <link name='Wall_8'><pose>-0.8 1.953 0 0 0 -1.5708</pose><collision name='Wall_8_Collision'><geometry><box><size>1 0.15 0.75</size></box></geometry></collision><visual name='Wall_8_Visual'><geometry><box><size>1 0.15 0.75</size></box></geometry><material><ambient>0 0 0 1</ambient><diffuse>0 0 0 1</diffuse></material></visual></link>
     </model>
 
 
