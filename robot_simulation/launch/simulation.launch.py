@@ -8,10 +8,12 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     pkg_name = 'robot_simulation'
+    robot_pose_maze = ['-2.23', '-1.2', '0.1']
+    robot_pose_maze_simple = ['-1.98', '2.5', '0.1']
     
     # 1. Path to our custom world and urdf
     world_file = os.path.join(
-        get_package_share_directory(pkg_name), 'worlds', 'maze.world')
+        get_package_share_directory(pkg_name), 'worlds', 'maze_simple.world')
     urdf_file = os.path.join(
         get_package_share_directory(pkg_name), 'urdf', 'my_robot.urdf')
 
@@ -37,7 +39,7 @@ def generate_launch_description():
     spawn_entity = Node(
         package='gazebo_ros',
         executable='spawn_entity.py',
-        arguments=['-entity', 'my_turtlebot', '-file', urdf_file, '-x', '-2.2', '-y', '-1', '-z', '0.1','-timeout', '60'],
+        arguments=['-entity', 'my_turtlebot', '-file', urdf_file, '-x', robot_pose_maze_simple[0], '-y', robot_pose_maze_simple[1], '-z', '0.1','-timeout', '60'],
         output='screen'
     )
     
