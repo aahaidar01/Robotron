@@ -18,7 +18,7 @@ class RLAgent(Node):
         
         
         # --- CONFIGURATION ---
-        self.target_coords = (2.5, 0.5)
+        self.target_coords = (1.90, -1.5)
         self.action_space = [0, 1, 2]  # Forward, Left, Right
         
         # --- STATE SPACE (512 States) ---
