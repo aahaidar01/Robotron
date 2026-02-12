@@ -469,15 +469,24 @@ class RLAgent(Node):
                 return True
         return False
 
-    def get_reward(self): #TODO: try the paper's definition of the reward function 
-        dist = math.sqrt( (self.target_coords[0] - self.robot_pose['x'])**2 + (self.target_coords[1] - self.robot_pose['y'])**2 ) 
-        if self.done: return -100, True 
-        if dist < 0.3: return 300, True 
-        if self.prev_dist is None: 
-            self.prev_dist = dist 
-            delta_dist = self.prev_dist - dist 
-            self.prev_dist = dist 
-            shaped_reward = -1 + (100 * delta_dist) 
+    def get_reward(self):
+        dist = math.sqrt(
+            (self.target_coords[0] - self.robot_pose['x'])**2 + 
+            (self.target_coords[1] - self.robot_pose['y'])**2
+        )
+        
+        if self.done:
+            return -100, True
+        if dist < 0.3:
+            return 300, True
+        
+        if self.prev_dist is None:
+            self.prev_dist = dist
+        
+        delta_dist = self.prev_dist - dist
+        self.prev_dist = dist
+        
+        shaped_reward = -1 + (10 * delta_dist)
         return shaped_reward, False
     
     # def get_reward(self):

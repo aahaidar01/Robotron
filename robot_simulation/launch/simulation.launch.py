@@ -8,7 +8,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     pkg_name = 'robot_simulation'
-    robot_pose_maze = ['-2.23', '-1.2', '0.1']
+    robot_pose_maze = ['-2.23', '-1.2', '0.1', '0.0']
     # robot_pose_maze_simple = ['-1.98', '2.5', '0.1']
     robot_pose_maze_simple = ['1.', '-0.5', '0.1', '0.0']  # x, y, z, yaw
     
