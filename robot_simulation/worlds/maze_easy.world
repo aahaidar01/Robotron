@@ -1,0 +1,189 @@
+<sdf version='1.7'>
+  <world name='default'>
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+
+    <physics type='ode'>
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1</real_time_factor>
+      <real_time_update_rate>1000</real_time_update_rate>
+    </physics>
+
+    <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so">
+      <ros><namespace>/</namespace></ros>
+    </plugin>
+    
+    <!--
+      SIMPLIFIED MAZE (Medium Difficulty)
+      Arena: ~5m x 5m (same outer walls as original)
+      Internal: 3 walls with gaps >= 1.0m (Waffle needs ~0.5m clearance)
+      Target: Bottom-right, accessible from multiple angles
+      Robot spawn: (0, 0) facing +x
+      
+      Wall coordinates are in MODEL frame.
+      Model pose offset: (0.31, 0.52, 0)
+      To get world coords: add (0.31, 0.52) to each wall pose.
+    -->
+    <model name='maze_medium'>
+      <static>1</static>
+      <pose>0.31 0.52 0 0 0 0</pose>
+
+      <!-- ============ OUTER WALLS (unchanged from original) ============ -->
+
+      <link name='Wall_0'>
+        <pose>-0.268 2.425 0 0 0 0</pose>
+        <collision name='Wall_0_Collision'><geometry><box><size>5 0.15 2.5</size></box></geometry></collision>
+        <visual name='Wall_0_Visual'><pose>0 0 1.25 0 0 0</pose><geometry><box><size>5 0.15 2.5</size></box></geometry>
+          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Bricks</name></script><ambient>1 1 1 1</ambient></material>
+        </visual>
+      </link>
+
+      <link name='Wall_1'>
+        <pose>2.156 0 0 0 0 -1.5708</pose>
+        <collision name='Wall_1_Collision'><geometry><box><size>5 0.15 2.5</size></box></geometry></collision>
+        <visual name='Wall_1_Visual'><pose>0 0 1.25 0 0 0</pose><geometry><box><size>5 0.15 2.5</size></box></geometry>
+          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Bricks</name></script><ambient>1 1 1 1</ambient></material>
+        </visual>
+      </link>
+
+      <link name='Wall_2'>
+        <pose>-0.268 -2.425 0 0 0 3.14159</pose>
+        <collision name='Wall_2_Collision'><geometry><box><size>5 0.15 2.5</size></box></geometry></collision>
+        <visual name='Wall_2_Visual'><pose>0 0 1.25 0 0 0</pose><geometry><box><size>5 0.15 2.5</size></box></geometry>
+          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Bricks</name></script><ambient>1 1 1 1</ambient></material>
+        </visual>
+      </link>
+
+      <link name='Wall_3'>
+        <pose>-2.693 0 0 0 0 1.5708</pose>
+        <collision name='Wall_3_Collision'><geometry><box><size>5 0.15 2.5</size></box></geometry></collision>
+        <visual name='Wall_3_Visual'><pose>0 0 1.25 0 0 0</pose><geometry><box><size>5 0.15 2.5</size></box></geometry>
+          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Bricks</name></script><ambient>1 1 1 1</ambient></material>
+        </visual>
+      </link>
+
+      <!-- ============ INTERNAL WALLS (3 walls, wider gaps) ============ -->
+
+      <!--
+        Wall_A: Horizontal wall in upper area
+        Model frame: center (-0.5, 1.0), length 2.0m
+        World frame: center (−0.19, 1.52)
+        
+        Gap to west wall: |-0.19 - 1.0| to west boundary(-2.383) = ~1.2m gap on left
+        Gap to east wall: east boundary(2.466) - |-0.19 + 1.0| = ~1.65m gap on right
+        
+        Purpose: Forces robot to choose left or right path from upper area
+      -->
+      <link name='Wall_A'>
+        <pose>-0.5 1.0 0 0 0 0</pose>
+        <collision name='Wall_A_Collision'><geometry><box><size>2.0 0.15 0.75</size></box></geometry></collision>
+        <visual name='Wall_A_Visual'><geometry><box><size>2.0 0.15 0.75</size></box></geometry>
+          <material><ambient>0 0 0 1</ambient><diffuse>0 0 0 1</diffuse></material>
+        </visual>
+      </link>
+
+      <!--
+        Wall_B: Vertical wall in center-left area
+        Model frame: center (-1.5, -0.3), length 2.0m (vertical)
+        World frame: center (−1.19, 0.22)
+        
+        Gap to north (Wall_A): Wall_A bottom edge at y=0.925, Wall_B top at y=0.7 -> ~1.0m+ gap
+        Gap to south wall: south boundary(-1.905) - (-1.19 - ... ) = ~1.0m gap at bottom
+        
+        Purpose: Creates left corridor, forces navigation around it
+      -->
+      <link name='Wall_B'>
+        <pose>-1.5 -0.3 0 0 0 1.5708</pose>
+        <collision name='Wall_B_Collision'><geometry><box><size>2.0 0.15 0.75</size></box></geometry></collision>
+        <visual name='Wall_B_Visual'><geometry><box><size>2.0 0.15 0.75</size></box></geometry>
+          <material><ambient>0 0 0 1</ambient><diffuse>0 0 0 1</diffuse></material>
+        </visual>
+      </link>
+
+      <!--
+        Wall_C: Horizontal wall in lower-right area
+        Model frame: center (0.8, -1.0), length 2.0m
+        World frame: center (1.11, −0.48)
+        
+        Gap to east wall: east boundary(2.466) - (1.11 + 1.0) = ~0.35m -> TOO TIGHT
+        
+        ADJUSTED: center (0.5, -1.0), length 1.8m
+        World frame: center (0.81, -0.48)
+        East gap: 2.466 - (0.81 + 0.9) = ~0.76m -> Still tight for waffle
+        
+        ADJUSTED AGAIN: center (0.2, -1.0), length 1.8m
+        World frame: center (0.51, -0.48)
+        East gap: 2.466 - (0.51 + 0.9) = ~1.06m -> Good!
+        West gap: (0.51 - 0.9) - (-1.19) = ~0.80m -> Acceptable (Wall_B blocks direct path anyway)
+        
+        Purpose: Separates upper and lower areas on the right side, 
+                 robot must go around to reach target below
+      -->
+      <link name='Wall_C'>
+        <pose>0.5 -1.0 0 0 0 0</pose>
+        <collision name='Wall_C_Collision'><geometry><box><size>1.0 0.15 0.75</size></box></geometry></collision>
+        <visual name='Wall_C_Visual'><geometry><box><size>1.0 0.15 0.75</size></box></geometry>
+          <material><ambient>0 0 0 1</ambient><diffuse>0 0 0 1</diffuse></material>
+        </visual>
+      </link>
+
+    </model>
+
+
+    <!--
+      TARGET: Bottom-right area, accessible via gap east of Wall_C
+      World coords: (1.8, -1.4)
+      Distance from east wall: 2.466 - 1.8 = 0.67m clearance
+      Distance from south wall: 1.8 - (-1.905) = 0.5m clearance (from wall surface)
+      Well clear of Wall_C bottom edge
+    -->
+    <model name='target_mark'>
+      <static>1</static>
+      <pose>1.8 -1.4 0.01 0 0 0</pose>
+      <link name='link_0'>
+        <visual name='visual'>
+          <geometry><cylinder><radius>0.3</radius><length>0.02</length></cylinder></geometry>
+          <material>
+            <ambient>0.1 0.8 0.1 1</ambient>
+            <diffuse>0.2 0.9 0.2 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name='target_beacon'>
+      <static>1</static>
+      <pose>1.8 -1.4 0.5 0 0 0</pose> 
+      <link name='link_1'>
+        <visual name='visual'>
+          <geometry>
+            <sphere>
+              <radius>0.08</radius></sphere>
+          </geometry>
+          <material>
+            <ambient>0 1 0 1</ambient>
+            <diffuse>0 1 0 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+            <emissive>0 0.5 0 1</emissive></material>
+        </visual>
+        <collision name='collision'>
+          <geometry>
+            <sphere><radius>0.15</radius></sphere>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+
+    <gui fullscreen='0'>
+      <camera name='user_camera'>
+        <pose>0.86 2.23 26.28 0 1.47 1.55</pose>
+        <view_controller>orbit</view_controller>
+      </camera>
+    </gui>
+  </world>
+</sdf>

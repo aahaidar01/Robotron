@@ -23,11 +23,13 @@ class RLAgent(Node):
         
         
         # --- CONFIGURATION ---
-        self.target_coords = (1.90, -1.5)
+        self.target_coords = (1.8, -1.4) # target position
         self.action_space = [0, 1, 2]  # Forward, Left, Right
         
         
         # --- SPAWN CONFIGURATION ---
+        self.random_spawn_enabled = False  # Toggle: False = fixed spawn, True = random
+        self.fixed_spawn = (0.0, 0.0, 0.0)  # Default fixed spawn (updated per world)
         self.spawns = [
             # Easy
             (1.5, -0.8, -1.57),
@@ -154,6 +156,7 @@ class RLAgent(Node):
         self.get_logger().info("RL Agent Started")
         self.get_logger().info(f"Target: {self.target_coords}")
         self.get_logger().info(f"State Space: {self.num_states} states")
+        self.get_logger().info(f"Random Spawn: {'ENABLED' if self.random_spawn_enabled else 'DISABLED'}")
         self.get_logger().info("=" * 60)
 
     def setup_logging(self):
@@ -271,6 +274,13 @@ class RLAgent(Node):
             self.scans_since_reset += 1
             return
         
+        # FIX: Don't flag collision if we're at the target (success takes priority)
+        dist_to_target = math.sqrt(
+            (self.target_coords[0] - self.robot_pose['x'])**2 + 
+            (self.target_coords[1] - self.robot_pose['y'])**2
+        )
+        if dist_to_target < 0.3:
+            return
         
         if np.min(self.scan_ranges) < 0.20:
             self.done = True
@@ -468,10 +478,11 @@ class RLAgent(Node):
         )
         
         # --- TERMINAL CONDITIONS ---
-        if self.done:
-            return -50.0, True
+        # FIX: Check success BEFORE collision so target near wall is not misclassified
         if dist < 0.3:
             return 250.0, True
+        if self.done:
+            return -50.0, True
         
         action = self.previous_action
         reward = 0.0
@@ -523,12 +534,12 @@ class RLAgent(Node):
         if action == 0:    # Forward
             msg.linear.x = 0.18
             msg.angular.z = 0.0
-        elif action == 1:  # Left (with slight forward motion)
-            msg.linear.x = 0.05
-            msg.angular.z = 0.3
-        elif action == 2:  # Right (with slight forward motion)
-            msg.linear.x = 0.05
-            msg.angular.z = -0.3
+        elif action == 1:  # Left (in-place rotation)
+            msg.linear.x = 0.0
+            msg.angular.z = 0.5
+        elif action == 2:  # Right (in-place rotation)
+            msg.linear.x = 0.0
+            msg.angular.z = -0.5
         
         # Track action history for anti-oscillation
         self.action_history.append(action)
@@ -659,37 +670,8 @@ class RLAgent(Node):
         self.get_logger().info(f"💾 Q-table saved: {filename}")
         np.save(os.path.join(self.q_table_dir, 'q_table_latest.npy'), self.q_table)
 
-    # def reset_simulation(self):
-    #     req = Empty.Request()
-    #     while not self.reset_client.wait_for_service(timeout_sec=1.0):
-    #         self.get_logger().warn('Reset service not available, waiting...')
-        
-    #     future = self.reset_client.call_async(req)
-    #     rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
-        
-    #     time.sleep(0.5)
-        
-    #     self.scan_ranges = None
-    #     self.scans_since_reset = 0
-        
-    #     self.done = False
-    #     self.step_count = 0
-    #     self.episode_reward = 0
-    #     self.previous_state_idx = 0
-    #     self.previous_action = 0
-    #     self.prev_dist = None
-    #     self.action_counts = {0: 0, 1: 0, 2: 0}
-        
-    #     self.action_history = []
-        
-    #     if self.epsilon > self.epsilon_min:
-    #         self.epsilon *= self.epsilon_decay
-    #     if self.alpha > self.alpha_min:
-    #         self.alpha *= self.alpha_decay
-    
-        
     def teleport_robot(self, x, y, yaw):
-        """Teleport robot to specified pose."""
+        """Teleport robot to specified pose using Gazebo SetEntityState."""
         if not self.set_state_client.wait_for_service(timeout_sec=2.0):
             self.get_logger().warn('Set entity state service not available')
             return False
@@ -717,22 +699,24 @@ class RLAgent(Node):
         return True
     
     def reset_simulation(self):
-        # Pick random spawn
-        spawn = random.choice(self.spawns)
+        # Stop the robot first
+        stop_msg = Twist()
+        self.cmd_pub.publish(stop_msg)
         
-        req = Empty.Request()
-        while not self.reset_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().warn('Reset service not available, waiting...')
-        
-        future = self.reset_client.call_async(req)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
-        
-        time.sleep(0.3)
-        
-        # Teleport to random spawn
-        self.teleport_robot(spawn[0], spawn[1], spawn[2])
-        
-        time.sleep(0.3)
+        if self.random_spawn_enabled:
+            # Random spawn: use teleport (no /reset_simulation to preserve odom frame)
+            spawn = random.choice(self.spawns)
+            self.teleport_robot(spawn[0], spawn[1], spawn[2])
+            time.sleep(0.3)
+            self.get_logger().info(f"Spawned at ({spawn[0]:.1f}, {spawn[1]:.1f}, yaw={spawn[2]:.2f})")
+        else:
+            # Fixed spawn: use /reset_simulation (resets odom cleanly to origin)
+            req = Empty.Request()
+            while not self.reset_client.wait_for_service(timeout_sec=1.0):
+                self.get_logger().warn('Reset service not available, waiting...')
+            future = self.reset_client.call_async(req)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+            time.sleep(0.5)
         
         # Reset state variables
         self.scan_ranges = None
@@ -750,8 +734,6 @@ class RLAgent(Node):
             self.epsilon *= self.epsilon_decay
         if self.alpha > self.alpha_min:
             self.alpha *= self.alpha_decay
-        
-        self.get_logger().info(f"Spawned at ({spawn[0]:.1f}, {spawn[1]:.1f}, yaw={spawn[2]:.2f})")
 
 def main(args=None):
     parser = argparse.ArgumentParser(description='VFH-QL Training')

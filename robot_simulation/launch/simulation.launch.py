@@ -8,15 +8,13 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     pkg_name = 'robot_simulation'
-    robot_pose_maze = ['-2.23', '-1.2', '0.1']
-    # robot_pose_maze_simple = ['0.9', '0.9', '0.1', '-1.57']  # x, y, z, yaw
-    robot_pose_maze_simple = ['0.0', '-0.2', '0.1', '0.0']  # x, y, z, yaw
+    robot_pose_maze = ['0.0', '0.0', '0.1', '0.0']  # x, y, z, yaw
     
 
     
     # 1. Path to our custom world and urdf
     world_file = os.path.join(
-        get_package_share_directory(pkg_name), 'worlds', 'maze_simple.world')
+        get_package_share_directory(pkg_name), 'worlds', 'maze_easy.world')
     urdf_file = os.path.join(
         get_package_share_directory(pkg_name), 'urdf', 'my_robot.urdf')
 
@@ -45,7 +43,7 @@ def generate_launch_description():
     spawn_entity = Node(
         package='gazebo_ros',
         executable='spawn_entity.py',
-        arguments=['-entity', 'my_turtlebot', '-file', urdf_file, '-x', robot_pose_maze_simple[0], '-y', robot_pose_maze_simple[1], '-z', robot_pose_maze_simple[2], '-Y', robot_pose_maze_simple[3] ,'-timeout', '60'],
+        arguments=['-entity', 'my_turtlebot', '-file', urdf_file, '-x', robot_pose_maze[0], '-y', robot_pose_maze[1], '-z', robot_pose_maze[2], '-Y', robot_pose_maze[3] ,'-timeout', '60'],
         output='screen'
     )
     
