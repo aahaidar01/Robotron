@@ -5,11 +5,16 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 from std_srvs.srv import Empty 
+
+from gazebo_msgs.srv import SetEntityState
+from gazebo_msgs.msg import EntityState
+
 import numpy as np
 import math
 import os
 from datetime import datetime
 import argparse
+import random
 
 class RLAgent(Node):
 
@@ -20,6 +25,22 @@ class RLAgent(Node):
         # --- CONFIGURATION ---
         self.target_coords = (1.90, -1.5)
         self.action_space = [0, 1, 2]  # Forward, Left, Right
+        
+        
+        # --- SPAWN CONFIGURATION ---
+        self.spawns = [
+            # Easy
+            (1.5, -0.8, -1.57),
+            (0.0, -1.0, 0.0),
+            # Medium
+            (-0.5, -1.5, 0.0),
+            (0.5, 0.0, -1.57),
+            # Hard
+            (0.9, 0.9, -1.57),
+        ]
+        
+        self.set_state_client = self.create_client(SetEntityState, '/set_entity_state')
+        
         
         # --- STATE SPACE (512 States) ---
         # Paper uses 8 Lidar + 1 Visibility + 1 Target Angle (Total 10 elements).
@@ -638,7 +659,67 @@ class RLAgent(Node):
         self.get_logger().info(f"💾 Q-table saved: {filename}")
         np.save(os.path.join(self.q_table_dir, 'q_table_latest.npy'), self.q_table)
 
+    # def reset_simulation(self):
+    #     req = Empty.Request()
+    #     while not self.reset_client.wait_for_service(timeout_sec=1.0):
+    #         self.get_logger().warn('Reset service not available, waiting...')
+        
+    #     future = self.reset_client.call_async(req)
+    #     rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+        
+    #     time.sleep(0.5)
+        
+    #     self.scan_ranges = None
+    #     self.scans_since_reset = 0
+        
+    #     self.done = False
+    #     self.step_count = 0
+    #     self.episode_reward = 0
+    #     self.previous_state_idx = 0
+    #     self.previous_action = 0
+    #     self.prev_dist = None
+    #     self.action_counts = {0: 0, 1: 0, 2: 0}
+        
+    #     self.action_history = []
+        
+    #     if self.epsilon > self.epsilon_min:
+    #         self.epsilon *= self.epsilon_decay
+    #     if self.alpha > self.alpha_min:
+    #         self.alpha *= self.alpha_decay
+    
+        
+    def teleport_robot(self, x, y, yaw):
+        """Teleport robot to specified pose."""
+        if not self.set_state_client.wait_for_service(timeout_sec=2.0):
+            self.get_logger().warn('Set entity state service not available')
+            return False
+        
+        req = SetEntityState.Request()
+        req.state = EntityState()
+        req.state.name = 'my_turtlebot'  # Must match entity name in launch file
+        req.state.pose.position.x = x
+        req.state.pose.position.y = y
+        req.state.pose.position.z = 0.1
+        
+        # Yaw to quaternion
+        req.state.pose.orientation.x = 0.0
+        req.state.pose.orientation.y = 0.0
+        req.state.pose.orientation.z = math.sin(yaw / 2.0)
+        req.state.pose.orientation.w = math.cos(yaw / 2.0)
+        
+        # Zero velocity
+        req.state.twist.linear.x = 0.0
+        req.state.twist.angular.z = 0.0
+        
+        future = self.set_state_client.call_async(req)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
+        
+        return True
+    
     def reset_simulation(self):
+        # Pick random spawn
+        spawn = random.choice(self.spawns)
+        
         req = Empty.Request()
         while not self.reset_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().warn('Reset service not available, waiting...')
@@ -646,11 +727,16 @@ class RLAgent(Node):
         future = self.reset_client.call_async(req)
         rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
         
-        time.sleep(0.5)
+        time.sleep(0.3)
         
+        # Teleport to random spawn
+        self.teleport_robot(spawn[0], spawn[1], spawn[2])
+        
+        time.sleep(0.3)
+        
+        # Reset state variables
         self.scan_ranges = None
         self.scans_since_reset = 0
-        
         self.done = False
         self.step_count = 0
         self.episode_reward = 0
@@ -658,13 +744,14 @@ class RLAgent(Node):
         self.previous_action = 0
         self.prev_dist = None
         self.action_counts = {0: 0, 1: 0, 2: 0}
-        
         self.action_history = []
         
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
         if self.alpha > self.alpha_min:
             self.alpha *= self.alpha_decay
+        
+        self.get_logger().info(f"Spawned at ({spawn[0]:.1f}, {spawn[1]:.1f}, yaw={spawn[2]:.2f})")
 
 def main(args=None):
     parser = argparse.ArgumentParser(description='VFH-QL Training')
