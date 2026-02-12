@@ -144,7 +144,7 @@
     -->
     <model name='target_mark'>
       <static>1</static>
-      <pose>1.8 -1.4 0.01 0 0 0</pose>
+      <pose>1.8 2.2 0.01 0 0 0</pose>
       <link name='link_0'>
         <visual name='visual'>
           <geometry><cylinder><radius>0.3</radius><length>0.02</length></cylinder></geometry>
@@ -158,7 +158,7 @@
 
     <model name='target_beacon'>
       <static>1</static>
-      <pose>1.8 -1.4 0.5 0 0 0</pose> 
+      <pose>1.8 2.2 0.5 0 0 0</pose> 
       <link name='link_1'>
         <visual name='visual'>
           <geometry>
