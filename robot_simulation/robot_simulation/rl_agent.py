@@ -5,11 +5,16 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 from std_srvs.srv import Empty 
+
+from gazebo_msgs.srv import SetEntityState
+from gazebo_msgs.msg import EntityState
+
 import numpy as np
 import math
 import os
 from datetime import datetime
 import argparse
+import random
 
 class RLAgent(Node):
 
@@ -18,8 +23,26 @@ class RLAgent(Node):
         
         
         # --- CONFIGURATION ---
-        self.target_coords = (1.90, -1.5)
+        self.target_coords = (1.8, -1.4) # target position
         self.action_space = [0, 1, 2]  # Forward, Left, Right
+        
+        
+        # --- SPAWN CONFIGURATION ---
+        self.random_spawn_enabled = False  # Toggle: False = fixed spawn, True = random
+        self.fixed_spawn = (0.0, 0.0, 0.0)  # Default fixed spawn (updated per world)
+        self.spawns = [
+            # Easy
+            (1.5, -0.8, -1.57),
+            (0.0, -1.0, 0.0),
+            # Medium
+            (-0.5, -1.5, 0.0),
+            (0.5, 0.0, -1.57),
+            # Hard
+            (0.9, 0.9, -1.57),
+        ]
+        
+        self.set_state_client = self.create_client(SetEntityState, '/set_entity_state')
+        
         
         # --- STATE SPACE (512 States) ---
         # Paper uses 8 Lidar + 1 Visibility + 1 Target Angle (Total 10 elements).
@@ -33,7 +56,7 @@ class RLAgent(Node):
         self.alpha = 0.1       # Learning Rate
         self.gamma = 0.95      # Discount Factor
         self.epsilon = 1.0     # Exploration Rate
-        self.epsilon_decay = 0.9995 # Slower decay for better learning 
+        self.epsilon_decay = 0.9990 # Slower decay for better learning
         self.epsilon_min = 0.05
         
         self.alpha_decay = 0.9995
@@ -79,6 +102,11 @@ class RLAgent(Node):
         
         # --- REWARD SHAPING ---
         self.prev_dist = None
+        
+        # --- VFH-QL REWARD CONFIGURATION ---
+        self.reward_mode = 'paper'  # 'paper' or 'hybrid'
+        self.action_history = []
+        self.max_action_history = 3
         
         # --- EPISODE TRACKING ---
         self.episode_num = 0
@@ -128,6 +156,7 @@ class RLAgent(Node):
         self.get_logger().info("RL Agent Started")
         self.get_logger().info(f"Target: {self.target_coords}")
         self.get_logger().info(f"State Space: {self.num_states} states")
+        self.get_logger().info(f"Random Spawn: {'ENABLED' if self.random_spawn_enabled else 'DISABLED'}")
         self.get_logger().info("=" * 60)
 
     def setup_logging(self):
@@ -245,6 +274,13 @@ class RLAgent(Node):
             self.scans_since_reset += 1
             return
         
+        # FIX: Don't flag collision if we're at the target (success takes priority)
+        dist_to_target = math.sqrt(
+            (self.target_coords[0] - self.robot_pose['x'])**2 + 
+            (self.target_coords[1] - self.robot_pose['y'])**2
+        )
+        if dist_to_target < 0.3:
+            return
         
         if np.min(self.scan_ranges) < 0.20:
             self.done = True
@@ -385,27 +421,115 @@ class RLAgent(Node):
         
         state_idx = (lidar_int * 16) + (self.target_vis * 8) + self.target_sector
         return state_idx
+    
 
-    def get_reward(self):
-        #TODO: try the paper's definition of the reward function
-        dist = math.sqrt(
-            (self.target_coords[0] - self.robot_pose['x'])**2 + 
-            (self.target_coords[1] - self.robot_pose['y'])**2
-        )
+    def _is_action_open(self, action):
+        """Check if action direction leads to an open way (VFH Criterion 1)."""
+        if action == 0:  # Forward
+            return self.lidar_state[2] == 1
+        elif action == 1:  # Turn Left
+            return self.lidar_state[1] == 1 or self.lidar_state[0] == 1
+        elif action == 2:  # Turn Right
+            return self.lidar_state[3] == 1 or self.lidar_state[4] == 1
+        return False
+
+    def _get_optimal_open_action(self):
+        """Find the open action closest to target direction (VFH Criterion 2)."""
+        sector_action_priority = {
+            0: [0, 1, 2],  # Target ahead
+            1: [1, 0, 2],  # Target left-front
+            2: [1, 0, 2],  # Target left
+            3: [1, 2, 0],  # Target left-back
+            4: [1, 2, 0],  # Target behind
+            5: [2, 1, 0],  # Target right-back
+            6: [2, 0, 1],  # Target right
+            7: [0, 2, 1],  # Target right-front
+        }
         
-        if self.done:
-            return -100, True
-        if dist < 0.3:
-            return 300, True
+        priority_list = sector_action_priority.get(self.target_sector, [0, 1, 2])
         
-        if self.prev_dist is None:
-            self.prev_dist = dist
-        
-        delta_dist = self.prev_dist - dist
-        self.prev_dist = dist
-        
-        shaped_reward = -1 + (100 * delta_dist)
+        for action in priority_list:
+            if self._is_action_open(action):
+                return action
+        return 0
+
+    def _get_action_angle_difference(self, action1, action2):
+        """Get angle difference between two actions in degrees."""
+        action_angles = {0: 0, 1: 60, 2: -60}
+        diff = abs(action_angles.get(action1, 0) - action_angles.get(action2, 0))
+        return min(diff, 360 - diff)
+
+    def _check_oscillation(self):
+        """Check if robot is oscillating (L-R-L or R-L-R pattern)."""
+        if len(self.action_history) < 3:
+            return False
+        last_3 = self.action_history[-3:]
+        if last_3[0] in [1, 2] and last_3[1] in [1, 2] and last_3[2] in [1, 2]:
+            if last_3[0] != last_3[1] and last_3[1] != last_3[2] and last_3[0] == last_3[2]:
+                return True
+        return False
+
+    def get_reward(self): #TODO: try the paper's definition of the reward function 
+        dist = math.sqrt( (self.target_coords[0] - self.robot_pose['x'])**2 + (self.target_coords[1] - self.robot_pose['y'])**2 ) 
+        if self.done: return -100, True 
+        if dist < 0.3: return 300, True 
+        if self.prev_dist is None: 
+            self.prev_dist = dist 
+            delta_dist = self.prev_dist - dist 
+            self.prev_dist = dist 
+            shaped_reward = -1 + (100 * delta_dist) 
         return shaped_reward, False
+    
+    # def get_reward(self):
+    #     """VFH-QL Reward Function (Modified for Trap Safety)"""
+    #     dist = math.sqrt(
+    #         (self.target_coords[0] - self.robot_pose['x'])**2 + 
+    #         (self.target_coords[1] - self.robot_pose['y'])**2
+    #     )
+        
+    #     # --- TERMINAL CONDITIONS ---
+    #     # FIX: Check success BEFORE collision so target near wall is not misclassified
+    #     if dist < 0.3:
+    #         return 250.0, True
+    #     if self.done:
+    #         return -50.0, True
+        
+    #     action = self.previous_action
+    #     reward = 0.0
+        
+    #     optimal_action = self._get_optimal_open_action()
+    #     action_is_open = self._is_action_open(action)
+        
+    #     # --- VFH Logic ---
+    #     if not action_is_open:
+    #         reward += -5.0
+    #     else:
+    #         if action == optimal_action:
+    #             reward += -1.0
+    #         else:
+    #             angle_diff = self._get_action_angle_difference(action, optimal_action)
+    #             penalty = -2.0 - (angle_diff / 90.0) * 3.0
+    #             reward += max(-5.0, penalty)
+        
+    #     # --- Hybrid Logic (Trap Safe) ---
+    #     if self.reward_mode == 'hybrid':
+    #         if self.prev_dist is not None:
+    #             delta_dist = self.prev_dist - dist
+                
+    #             if action == optimal_action and delta_dist < 0:
+    #                  # Ignore distance penalty if we are following optimal path
+    #                  reward += 0.0 
+    #             else:
+    #                  reward += 20.0 * delta_dist
+            
+    #         if self.target_vis == 1:
+    #             reward += 1.0
+            
+    #         if self._check_oscillation():
+    #             reward += -3.0
+        
+    #     self.prev_dist = dist
+    #     return reward, False
 
     def choose_action(self, state_idx):
         if np.random.uniform(0, 1) < self.epsilon:
@@ -413,19 +537,26 @@ class RLAgent(Node):
         else:
             return np.argmax(self.q_table[state_idx])
 
+    
     def execute_action(self, action):
         msg = Twist()
-        
+
         if action == 0:    # Forward
             msg.linear.x = 0.18
             msg.angular.z = 0.0
-        elif action == 1:  # Left (with slight forward motion)
-            msg.linear.x = 0.0
+        elif action == 1:  # Left (in-place rotation)
+            msg.linear.x = 0.03
             msg.angular.z = 0.5
-        elif action == 2:  # Right (with slight forward motion)
-            msg.linear.x = 0.0
+        elif action == 2:  # Right (in-place rotation)
+            msg.linear.x = 0.03
             msg.angular.z = -0.5
         
+        # Track action history for anti-oscillation
+        self.action_history.append(action)
+        if len(self.action_history) > self.max_action_history:
+            self.action_history.pop(0)
+            
+            
         self.cmd_pub.publish(msg)
         self.action_counts[action] += 1
 
@@ -549,19 +680,57 @@ class RLAgent(Node):
         self.get_logger().info(f"💾 Q-table saved: {filename}")
         np.save(os.path.join(self.q_table_dir, 'q_table_latest.npy'), self.q_table)
 
+    def teleport_robot(self, x, y, yaw):
+        """Teleport robot to specified pose using Gazebo SetEntityState."""
+        if not self.set_state_client.wait_for_service(timeout_sec=2.0):
+            self.get_logger().warn('Set entity state service not available')
+            return False
+        
+        req = SetEntityState.Request()
+        req.state = EntityState()
+        req.state.name = 'my_turtlebot'  # Must match entity name in launch file
+        req.state.pose.position.x = x
+        req.state.pose.position.y = y
+        req.state.pose.position.z = 0.1
+        
+        # Yaw to quaternion
+        req.state.pose.orientation.x = 0.0
+        req.state.pose.orientation.y = 0.0
+        req.state.pose.orientation.z = math.sin(yaw / 2.0)
+        req.state.pose.orientation.w = math.cos(yaw / 2.0)
+        
+        # Zero velocity
+        req.state.twist.linear.x = 0.0
+        req.state.twist.angular.z = 0.0
+        
+        future = self.set_state_client.call_async(req)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
+        
+        return True
+    
     def reset_simulation(self):
-        req = Empty.Request()
-        while not self.reset_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().warn('Reset service not available, waiting...')
+        # Stop the robot first
+        stop_msg = Twist()
+        self.cmd_pub.publish(stop_msg)
         
-        future = self.reset_client.call_async(req)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+        if self.random_spawn_enabled:
+            # Random spawn: use teleport (no /reset_simulation to preserve odom frame)
+            spawn = random.choice(self.spawns)
+            self.teleport_robot(spawn[0], spawn[1], spawn[2])
+            time.sleep(0.3)
+            self.get_logger().info(f"Spawned at ({spawn[0]:.1f}, {spawn[1]:.1f}, yaw={spawn[2]:.2f})")
+        else:
+            # Fixed spawn: use /reset_simulation (resets odom cleanly to origin)
+            req = Empty.Request()
+            while not self.reset_client.wait_for_service(timeout_sec=1.0):
+                self.get_logger().warn('Reset service not available, waiting...')
+            future = self.reset_client.call_async(req)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+            time.sleep(0.5)
         
-        time.sleep(0.5)
-        
+        # Reset state variables
         self.scan_ranges = None
         self.scans_since_reset = 0
-        
         self.done = False
         self.step_count = 0
         self.episode_reward = 0
@@ -569,6 +738,7 @@ class RLAgent(Node):
         self.previous_action = 0
         self.prev_dist = None
         self.action_counts = {0: 0, 1: 0, 2: 0}
+        self.action_history = []
         
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
