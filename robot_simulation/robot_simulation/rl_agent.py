@@ -33,7 +33,7 @@ class RLAgent(Node):
         self.alpha = 0.1       # Learning Rate
         self.gamma = 0.95      # Discount Factor
         self.epsilon = 1.0     # Exploration Rate
-        self.epsilon_decay = 0.998 # Slower decay for better learning
+        self.epsilon_decay = 0.9995 # Slower decay for better learning 
         self.epsilon_min = 0.05
         
         self.alpha_decay = 0.9995
