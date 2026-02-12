@@ -75,7 +75,7 @@ class RLAgent(Node):
         
         # --- SECTOR DEFINITIONS ---
         self.sectors = None
-        self.safe_distance_threshold = 0.5  # distance to obstacle threshold
+        self.safe_distance_threshold = 0.30  # distance to obstacle threshold
         
         # --- REWARD SHAPING ---
         self.prev_dist = None
@@ -84,9 +84,9 @@ class RLAgent(Node):
         self.episode_num = 0
         self.episode_reward = 0
         self.step_count = 0
-        self.max_steps = 1000
+        self.max_steps = 2500
         
-        self.max_episodes = 5000
+        self.max_episodes = 10000
         
         self.episode_rewards = []
         self.episode_steps = []
@@ -420,11 +420,11 @@ class RLAgent(Node):
             msg.linear.x = 0.18
             msg.angular.z = 0.0
         elif action == 1:  # Left (with slight forward motion)
-            msg.linear.x = 0.1
-            msg.angular.z = 0.4
+            msg.linear.x = 0.0
+            msg.angular.z = 0.5
         elif action == 2:  # Right (with slight forward motion)
-            msg.linear.x = 0.1
-            msg.angular.z = -0.4
+            msg.linear.x = 0.0
+            msg.angular.z = -0.5
         
         self.cmd_pub.publish(msg)
         self.action_counts[action] += 1
