@@ -535,10 +535,10 @@ class RLAgent(Node):
             msg.linear.x = 0.18
             msg.angular.z = 0.0
         elif action == 1:  # Left (in-place rotation)
-            msg.linear.x = 0.0
+            msg.linear.x = 0.03
             msg.angular.z = 0.5
         elif action == 2:  # Right (in-place rotation)
-            msg.linear.x = 0.0
+            msg.linear.x = 0.03
             msg.angular.z = -0.5
         
         # Track action history for anti-oscillation
