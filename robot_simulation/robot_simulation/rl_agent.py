@@ -23,7 +23,7 @@ class RLAgent(Node):
         
         
         # --- CONFIGURATION ---
-        self.target_coords = (1.8, -1.4) # target position
+        self.target_coords = (1.8, 2.2) # target position
         self.action_space = [0, 1, 2]  # Forward, Left, Right
         
         
@@ -84,6 +84,7 @@ class RLAgent(Node):
         self.previous_state_idx = 0
         self.previous_action = 0
         self.done = False
+        self.termination_reason = "running"
         
         # --- LIDAR PROCESSING VARIABLES ---
         self.scan_ranges = None
@@ -98,7 +99,7 @@ class RLAgent(Node):
         
         # --- SECTOR DEFINITIONS ---
         self.sectors = None
-        self.safe_distance_threshold = 0.30  # distance to obstacle threshold
+        self.safe_distance_threshold = 0.55  # distance to obstacle threshold
         
         # --- REWARD SHAPING ---
         self.prev_dist = None
@@ -112,7 +113,7 @@ class RLAgent(Node):
         self.episode_num = 0
         self.episode_reward = 0
         self.step_count = 0
-        self.max_steps = 2500
+        self.max_steps = 1000
         
         self.max_episodes = 10000
         
@@ -274,7 +275,7 @@ class RLAgent(Node):
             self.scans_since_reset += 1
             return
         
-        # FIX: Don't flag collision if we're at the target (success takes priority)
+        # Don't flag collision if we're at the target (success takes priority)
         dist_to_target = math.sqrt(
             (self.target_coords[0] - self.robot_pose['x'])**2 + 
             (self.target_coords[1] - self.robot_pose['y'])**2
@@ -475,33 +476,14 @@ class RLAgent(Node):
             (self.target_coords[1] - self.robot_pose['y'])**2
         )
         
-        if self.done:
-            return -100, True
-        if dist < 0.3:
-            return 300, True
-        
-        if self.prev_dist is None:
-            self.prev_dist = dist
-        
-        delta_dist = self.prev_dist - dist
-        self.prev_dist = dist
-        
-        shaped_reward = -1 + (10 * delta_dist)
-        return shaped_reward, False
-    
-    # def get_reward(self):
-    #     """VFH-QL Reward Function (Modified for Trap Safety)"""
-    #     dist = math.sqrt(
-    #         (self.target_coords[0] - self.robot_pose['x'])**2 + 
-    #         (self.target_coords[1] - self.robot_pose['y'])**2
-    #     )
-        
-    #     # --- TERMINAL CONDITIONS ---
-    #     # FIX: Check success BEFORE collision so target near wall is not misclassified
-    #     if dist < 0.3:
-    #         return 250.0, True
-    #     if self.done:
-    #         return -50.0, True
+        # --- TERMINAL CONDITIONS ---
+        if dist < 0.30:
+            self.termination_reason = "success"
+            return 2500.0, True
+            
+        if self.done: # This flag comes from collision check in scan_callback
+            self.termination_reason = "collision"
+            return -250.0, True
         
     #     action = self.previous_action
     #     reward = 0.0
@@ -509,27 +491,25 @@ class RLAgent(Node):
     #     optimal_action = self._get_optimal_open_action()
     #     action_is_open = self._is_action_open(action)
         
-    #     # --- VFH Logic ---
+    #     # VFH Logic
     #     if not action_is_open:
     #         reward += -5.0
     #     else:
     #         if action == optimal_action:
-    #             reward += -1.0
+    #             reward += -1.0 # Small time penalty
     #         else:
     #             angle_diff = self._get_action_angle_difference(action, optimal_action)
     #             penalty = -2.0 - (angle_diff / 90.0) * 3.0
     #             reward += max(-5.0, penalty)
         
-    #     # --- Hybrid Logic (Trap Safe) ---
-    #     if self.reward_mode == 'hybrid':
-    #         if self.prev_dist is not None:
-    #             delta_dist = self.prev_dist - dist
-                
-    #             if action == optimal_action and delta_dist < 0:
-    #                  # Ignore distance penalty if we are following optimal path
-    #                  reward += 0.0 
-    #             else:
-    #                  reward += 20.0 * delta_dist
+        # Hybrid Logic
+        if self.reward_mode == 'hybrid':
+            if self.prev_dist is not None:
+                delta_dist = self.prev_dist - dist
+                if action == optimal_action and delta_dist < 0:
+                     reward += 0.0 
+                else:
+                     reward += 20.0 * delta_dist
             
     #         if self.target_vis == 1:
     #             reward += 1.0
@@ -580,9 +560,9 @@ class RLAgent(Node):
         reward, done = self.get_reward()
         self.episode_reward += reward
         
+        # Q-Learning Update
         if self.step_count > 0:
             old_q = self.q_table[self.previous_state_idx, self.previous_action]
-            
             if done:
                 target = reward
             else:
@@ -592,9 +572,12 @@ class RLAgent(Node):
             new_q = old_q + self.alpha * (target - old_q)
             self.q_table[self.previous_state_idx, self.previous_action] = new_q
             
-            if done or self.step_count >= self.max_steps:
-                self.end_episode(done, self.step_count >= self.max_steps)
-                return
+        # Check termination
+        if done or self.step_count >= self.max_steps:
+            if self.step_count >= self.max_steps and not done:
+                self.termination_reason = "timeout"
+            self.end_episode(done, self.step_count >= self.max_steps)
+            return
         
         action = self.choose_action(current_state_idx)
         self.execute_action(action)
@@ -603,18 +586,35 @@ class RLAgent(Node):
         self.previous_action = action
         self.step_count += 1
 
+
+
     def end_episode(self, collision_or_success, timeout):
         self.episode_num += 1
-        success = (self.episode_reward > 200)
-        collision = self.done and not success
+
+        # Priority Logic: Success > Collision > Timeout
+        if self.termination_reason == "success":
+            outcome = "SUCCESS ✓"
+            is_success = 1
+            is_collision = 0
+            is_timeout = 0
+        elif self.termination_reason == "collision":
+            outcome = "COLLISION ✗"
+            is_success = 0
+            is_collision = 1
+            is_timeout = 0
+        else:
+            # If done is True but neither success nor collision, or timeout happened
+            outcome = "TIMEOUT ⏱"
+            is_success = 0
+            is_collision = 0
+            is_timeout = 1
         
         self.episode_rewards.append(self.episode_reward)
         self.episode_steps.append(self.step_count)
-        self.episode_successes.append(1 if success else 0)
-        self.episode_collisions.append(1 if collision else 0)
-        self.episode_timeouts.append(1 if timeout else 0)
+        self.episode_successes.append(is_success)
+        self.episode_collisions.append(is_collision)
+        self.episode_timeouts.append(is_timeout)
         
-        outcome = "SUCCESS ✓" if success else ("COLLISION ✗" if collision else "TIMEOUT ⏱")
         self.get_logger().info(
             f"Episode {self.episode_num:4d} | "
             f"{outcome:12s} | "
@@ -623,8 +623,7 @@ class RLAgent(Node):
             f"ε: {self.epsilon:.3f}"
         )
 
-        # Log to file BEFORE stats (uses action_counts)
-        self.log_to_file(success, collision, timeout)
+        self.log_to_file(is_success, is_collision, is_timeout)
         
         if self.episode_num % 10 == 0:
             self.log_statistics()
@@ -741,6 +740,7 @@ class RLAgent(Node):
         self.scan_ranges = None
         self.scans_since_reset = 0
         self.done = False
+        self.termination_reason = "running"
         self.step_count = 0
         self.episode_reward = 0
         self.previous_state_idx = 0
