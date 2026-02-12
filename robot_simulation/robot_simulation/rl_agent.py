@@ -470,7 +470,9 @@ class RLAgent(Node):
                 return True
         return False
 
+
     def get_reward(self):
+        """VFH-QL Reward Function (Modified for Trap Safety)"""
         dist = math.sqrt(
             (self.target_coords[0] - self.robot_pose['x'])**2 + 
             (self.target_coords[1] - self.robot_pose['y'])**2
@@ -485,22 +487,22 @@ class RLAgent(Node):
             self.termination_reason = "collision"
             return -250.0, True
         
-    #     action = self.previous_action
-    #     reward = 0.0
+        action = self.previous_action
+        reward = 0.0
         
-    #     optimal_action = self._get_optimal_open_action()
-    #     action_is_open = self._is_action_open(action)
+        optimal_action = self._get_optimal_open_action()
+        action_is_open = self._is_action_open(action)
         
-    #     # VFH Logic
-    #     if not action_is_open:
-    #         reward += -5.0
-    #     else:
-    #         if action == optimal_action:
-    #             reward += -1.0 # Small time penalty
-    #         else:
-    #             angle_diff = self._get_action_angle_difference(action, optimal_action)
-    #             penalty = -2.0 - (angle_diff / 90.0) * 3.0
-    #             reward += max(-5.0, penalty)
+        # VFH Logic
+        if not action_is_open:
+            reward += -5.0
+        else:
+            if action == optimal_action:
+                reward += -1.0 # Small time penalty
+            else:
+                angle_diff = self._get_action_angle_difference(action, optimal_action)
+                penalty = -2.0 - (angle_diff / 90.0) * 3.0
+                reward += max(-5.0, penalty)
         
         # Hybrid Logic
         if self.reward_mode == 'hybrid':
@@ -511,14 +513,14 @@ class RLAgent(Node):
                 else:
                      reward += 20.0 * delta_dist
             
-    #         if self.target_vis == 1:
-    #             reward += 1.0
+            if self.target_vis == 1:
+                reward += 1.0
             
-    #         if self._check_oscillation():
-    #             reward += -3.0
+            if self._check_oscillation():
+                reward += -3.0
         
-    #     self.prev_dist = dist
-    #     return reward, False
+        self.prev_dist = dist
+        return reward, False
 
     def choose_action(self, state_idx):
         if np.random.uniform(0, 1) < self.epsilon:
