@@ -75,13 +75,13 @@ class RLAgent(Node):
         
         # --- SECTOR DEFINITIONS ---
         self.sectors = None
-        self.safe_distance_threshold = 0.35  # distance to obstacle threshold
+        self.safe_distance_threshold = 0.30  # distance to obstacle threshold
         
         # --- REWARD SHAPING ---
         self.prev_dist = None
         
         # --- VFH-QL REWARD CONFIGURATION ---
-        self.reward_mode = 'hybrid'  # 'paper' or 'hybrid'
+        self.reward_mode = 'paper'  # 'paper' or 'hybrid'
         self.action_history = []
         self.max_action_history = 3
         
@@ -498,16 +498,16 @@ class RLAgent(Node):
     
     def execute_action(self, action):
         msg = Twist()
-        
+
         if action == 0:    # Forward
-            msg.linear.x = 0.18   # Safe speed for maze
+            msg.linear.x = 0.18
             msg.angular.z = 0.0
-        elif action == 1:  # Pivot Left (Zero Radius)
-            msg.linear.x = 0.0    # STOP moving forward
-            msg.angular.z = 0.5   # Spin only
-        elif action == 2:  # Pivot Right (Zero Radius)
-            msg.linear.x = 0.0    # STOP moving forward
-            msg.angular.z = -0.5  # Spin only
+        elif action == 1:  # Left (with slight forward motion)
+            msg.linear.x = 0.05
+            msg.angular.z = 0.3
+        elif action == 2:  # Right (with slight forward motion)
+            msg.linear.x = 0.05
+            msg.angular.z = -0.3
         
         # Track action history for anti-oscillation
         self.action_history.append(action)
