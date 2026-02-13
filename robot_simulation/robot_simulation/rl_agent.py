@@ -23,7 +23,7 @@ class RLAgent(Node):
         
         
         # --- CONFIGURATION ---
-        self.target_coords = (1.8, 2.2) # target position
+        self.target_coords = (1.5, -1.5) # target position
         self.action_space = [0, 1, 2]  # Forward, Left, Right
         
         
@@ -99,7 +99,11 @@ class RLAgent(Node):
         
         # --- SECTOR DEFINITIONS ---
         self.sectors = None
-        self.safe_distance_threshold = 0.55  # distance to obstacle threshold
+        self.safe_distance_threshold = 0.4  # distance to obstacle threshold
+        self.collision_threshold = 0.20 # distance to obstacle for immediate collision
+
+        self.reward_success = 2500.0  # Must be > (max_steps * penalty)
+        self.reward_collision = -200.0
         
         # --- REWARD SHAPING ---
         self.prev_dist = None
@@ -283,7 +287,7 @@ class RLAgent(Node):
         if dist_to_target < 0.3:
             return
         
-        if np.min(self.scan_ranges) < 0.20:
+        if np.min(self.scan_ranges) < self.collision_threshold:
             self.done = True
             stop_msg = Twist()
             self.cmd_pub.publish(stop_msg)
@@ -481,11 +485,11 @@ class RLAgent(Node):
         # --- TERMINAL CONDITIONS ---
         if dist < 0.30:
             self.termination_reason = "success"
-            return 2500.0, True
+            return self.reward_success , True
             
         if self.done: # This flag comes from collision check in scan_callback
             self.termination_reason = "collision"
-            return -250.0, True
+            return self.reward_collision, True
         
         action = self.previous_action
         reward = 0.0

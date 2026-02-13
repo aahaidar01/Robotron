@@ -1,8 +1,13 @@
 <?xml version='1.0'?>
 <sdf version='1.7'>
   <world name='default'>
-    <include><uri>model://sun</uri></include>
-    <include><uri>model://ground_plane</uri></include>
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
 
     <physics type='ode'>
       <max_step_size>0.001</max_step_size>
@@ -50,62 +55,54 @@
         </visual>
       </link>
 
-      <link name='Wall_Splitter'>
-        <pose>0.7 -0.2 0 0 0 1.5708</pose> 
-        <collision name='Collision'><geometry><box><size>1.2 0.15 1.0</size></box></geometry></collision>
-        <visual name='Visual'><geometry><box><size>1.2 0.15 1.0</size></box></geometry>
+      <link name='Obstacle_Center'>
+        <pose>0.7 0.8 0 0 0 1.5708</pose> 
+        <collision name='Collision'><geometry><box><size>3.2 0.15 1.0</size></box></geometry></collision>
+        <visual name='Visual'><geometry><box><size>3.2 0.15 1.0</size></box></geometry>
           <material><ambient>0.3 0.3 0.3 1</ambient><diffuse>0.3 0.3 0.3 1</diffuse></material>
         </visual>
       </link>
-
-      <link name='Wall_Top'>
-        <pose>-0.5 1.5 0 0 0 0</pose> 
-        <collision name='Collision'><geometry><box><size>1.8 0.15 1.0</size></box></geometry></collision>
-        <visual name='Visual'><geometry><box><size>1.8 0.15 1.0</size></box></geometry>
-          <material><ambient>0.3 0.3 0.3 1</ambient><diffuse>0.3 0.3 0.3 1</diffuse></material>
-        </visual>
-      </link>
-
-      <!-- <link name='Wall_Shield'>
-        <pose>1.5 0.5 0 0 0 1.5708</pose> 
-        <collision name='Collision'><geometry><box><size>1.0 0.15 1.0</size></box></geometry></collision>
-        <visual name='Visual'><geometry><box><size>1.0 0.15 1.0</size></box></geometry>
-          <material><ambient>0.3 0.3 0.3 1</ambient><diffuse>0.3 0.3 0.3 1</diffuse></material>
-        </visual>
-      </link> -->
     </model>
 
     <model name='target_mark'>
       <static>1</static>
-      <pose>1.5 -1.5 0.01 0 0 0</pose>
+      <pose>1.5 1.5 0.01 0 0 0</pose>
       <link name='link_0'>
         <visual name='visual'>
           <geometry><cylinder><radius>0.3</radius><length>0.02</length></cylinder></geometry>
-          <material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material>
+          <material>
+            <ambient>0 1 0 1</ambient>
+            <diffuse>0 1 0 1</diffuse>
+          </material>
         </visual>
       </link>
     </model>
 
     <model name='target_beacon'>
       <static>1</static>
-      <pose>1.5 -1.5 0.5 0 0 0</pose> 
+      <pose>1.5 1.5 0.5 0 0 0</pose> 
       <link name='link_1'>
         <visual name='visual'>
-          <geometry><sphere><radius>0.15</radius></sphere></geometry>
+          <geometry>
+            <sphere><radius>0.15</radius></sphere>
+          </geometry>
           <material>
             <ambient>0 1 0 1</ambient>
             <diffuse>0 1 0 1</diffuse>
             <emissive>0 0.8 0 1</emissive>
           </material>
         </visual>
+        <collision name='collision'>
+          <geometry><sphere><radius>0.15</radius></sphere></geometry>
+        </collision>
       </link>
     </model>
 
     <gui fullscreen='0'>
       <camera name='user_camera'>
-        <pose>0 0 10 0 1.57 1.57</pose>
-        <view_controller>orbit</view_controller>
+        <pose>0 0 10 0 1.57 1.57</pose> <view_controller>orbit</view_controller>
       </camera>
     </gui>
+
   </world>
 </sdf>
