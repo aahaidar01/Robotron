@@ -14,70 +14,71 @@
       <ros><namespace>/</namespace></ros>
     </plugin>
     
-    <model name='maze_medium'>
+    <model name='maze_zig_zag'>
       <static>1</static>
       <pose>0 0 0 0 0 0</pose>
 
       <link name='Wall_North'>
-        <pose>0 2.425 0 0 0 0</pose>
-        <collision name='Collision'><geometry><box><size>5 0.15 2.5</size></box></geometry></collision>
-        <visual name='Visual'><geometry><box><size>5 0.15 2.5</size></box></geometry>
+        <pose>0 2.5 0 0 0 0</pose>
+        <collision name='Collision'><geometry><box><size>2 0.10 1</size></box></geometry></collision>
+        <visual name='Visual'><geometry><box><size>2 0.10 1</size></box></geometry>
           <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Bricks</name></script></material>
         </visual>
       </link>
 
       <link name='Wall_South'>
-        <pose>0 -2.425 0 0 0 0</pose>
-        <collision name='Collision'><geometry><box><size>5 0.15 2.5</size></box></geometry></collision>
-        <visual name='Visual'><geometry><box><size>5 0.15 2.5</size></box></geometry>
+        <pose>0 -2.5 0 0 0 0</pose>
+        <collision name='Collision'><geometry><box><size>2 0.10 1</size></box></geometry></collision>
+        <visual name='Visual'><geometry><box><size>2 0.10 1</size></box></geometry>
           <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Bricks</name></script></material>
         </visual>
       </link>
 
       <link name='Wall_East'>
-        <pose>2.425 0 0 0 0 -1.5708</pose>
+        <pose>1 0 0 0 0 -1.5708</pose>
         <collision name='Collision'><geometry><box><size>5 0.15 2.5</size></box></geometry></collision>
-        <visual name='Visual'><geometry><box><size>5 0.15 2.5</size></box></geometry>
+        <visual name='Visual'><geometry><box><size>5 0.15 1</size></box></geometry>
           <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Bricks</name></script></material>
         </visual>
       </link>
 
       <link name='Wall_West'>
-        <pose>-2.425 0 0 0 0 1.5708</pose>
-        <collision name='Collision'><geometry><box><size>5 0.15 2.5</size></box></geometry></collision>
-        <visual name='Visual'><geometry><box><size>5 0.15 2.5</size></box></geometry>
+        <pose>-1 0 0 0 0 1.5708</pose>
+        <collision name='Collision'><geometry><box><size>5 0.10 1</size></box></geometry></collision>
+        <visual name='Visual'><geometry><box><size>5 0.10 1</size></box></geometry>
           <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Bricks</name></script></material>
         </visual>
       </link>
 
-      <link name='Wall_Splitter'>
-        <pose>0.7 -0.2 0 0 0 1.5708</pose> 
-        <collision name='Collision'><geometry><box><size>1.2 0.15 1.0</size></box></geometry></collision>
-        <visual name='Visual'><geometry><box><size>1.2 0.15 1.0</size></box></geometry>
+      <link name='Wall_Splitter_1'>
+        <pose>-0.5 -1.25 0 0 0 0</pose> 
+        <collision name='Collision'><geometry><box><size>1.0 0.10 1.0</size></box></geometry></collision>
+        <visual name='Visual'><geometry><box><size>1.0 0.10 1.0</size></box></geometry>
           <material><ambient>0.3 0.3 0.3 1</ambient><diffuse>0.3 0.3 0.3 1</diffuse></material>
         </visual>
       </link>
 
-      <link name='Wall_Top'>
-        <pose>-0.5 1.5 0 0 0 0</pose> 
-        <collision name='Collision'><geometry><box><size>1.8 0.15 1.0</size></box></geometry></collision>
-        <visual name='Visual'><geometry><box><size>1.8 0.15 1.0</size></box></geometry>
+      <link name='Wall_Splitter_2'>
+        <pose>0.5 0 0 0 0 0</pose> 
+        <collision name='Collision'><geometry><box><size>1.0 0.10 1.0</size></box></geometry></collision>
+        <visual name='Visual'><geometry><box><size>1.0 0.10 1.0</size></box></geometry>
           <material><ambient>0.3 0.3 0.3 1</ambient><diffuse>0.3 0.3 0.3 1</diffuse></material>
         </visual>
       </link>
 
-      <!-- <link name='Wall_Shield'>
-        <pose>1.5 0.5 0 0 0 1.5708</pose> 
-        <collision name='Collision'><geometry><box><size>1.0 0.15 1.0</size></box></geometry></collision>
-        <visual name='Visual'><geometry><box><size>1.0 0.15 1.0</size></box></geometry>
+      <link name='Wall_Splitter_3'>
+        <pose>-0.5 1.25 0 0 0 0</pose> 
+        <collision name='Collision'><geometry><box><size>1.0 0.10 1.0</size></box></geometry></collision>
+        <visual name='Visual'><geometry><box><size>1.0 0.10 1.0</size></box></geometry>
           <material><ambient>0.3 0.3 0.3 1</ambient><diffuse>0.3 0.3 0.3 1</diffuse></material>
         </visual>
-      </link> -->
+      </link>
+    
     </model>
 
     <model name='target_mark'>
       <static>1</static>
-      <pose>1.5 -1.5 0.01 0 0 0</pose>
+      <pose>-0.6 1.8 0.01 0 0 0</pose>
       <link name='link_0'>
         <visual name='visual'>
           <geometry><cylinder><radius>0.3</radius><length>0.02</length></cylinder></geometry>
@@ -88,14 +89,15 @@
 
     <model name='target_beacon'>
       <static>1</static>
-      <pose>1.5 -1.5 0.5 0 0 0</pose> 
+      <pose>-0.6 1.8 0.3 0 0 0</pose> 
       <link name='link_1'>
         <visual name='visual'>
           <geometry><sphere><radius>0.15</radius></sphere></geometry>
           <material>
             <ambient>0 1 0 1</ambient>
             <diffuse>0 1 0 1</diffuse>
-            <emissive>0 0.8 0 1</emissive>
+            <specular>0.1 0.1 0.1 1</specular>
+            <emissive>0 0.5 0 1</emissive>
           </material>
         </visual>
       </link>

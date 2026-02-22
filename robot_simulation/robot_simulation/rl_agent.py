@@ -23,7 +23,7 @@ class RLAgent(Node):
         
         
         # --- CONFIGURATION ---
-        self.target_coords = (1.8, 2.2) # target position
+        self.target_coords = (-0.6, 1.8) # target position
         self.action_space = [0, 1, 2]  # Forward, Left, Right
         
         
@@ -32,13 +32,13 @@ class RLAgent(Node):
         self.fixed_spawn = (0.0, 0.0, 0.0)  # Default fixed spawn (updated per world)
         self.spawns = [
             # Easy
-            (1.5, -0.8, -1.57),
-            (0.0, -1.0, 0.0),
+            (0.5, 1.15, 1.57),
+            (0.5, 1.8, 3.14),
             # Medium
-            (-0.5, -1.5, 0.0),
-            (0.5, 0.0, -1.57),
+            (0.5, -0.5, 1.57),
+            (0.0, -0.5, 1.57),
             # Hard
-            (0.9, 0.9, -1.57),
+            (-0.5, -2.1, 1.57),
         ]
         
         self.set_state_client = self.create_client(SetEntityState, '/set_entity_state')
@@ -99,7 +99,7 @@ class RLAgent(Node):
         
         # --- SECTOR DEFINITIONS ---
         self.sectors = None
-        self.safe_distance_threshold = 0.55  # distance to obstacle threshold
+        self.safe_distance_threshold = 0.4 # distance to obstacle threshold
         
         # --- REWARD SHAPING ---
         self.prev_dist = None
@@ -280,7 +280,7 @@ class RLAgent(Node):
             (self.target_coords[0] - self.robot_pose['x'])**2 + 
             (self.target_coords[1] - self.robot_pose['y'])**2
         )
-        if dist_to_target < 0.3:
+        if dist_to_target < 0.2:
             return
         
         if np.min(self.scan_ranges) < 0.20:
@@ -470,15 +470,14 @@ class RLAgent(Node):
                 return True
         return False
 
-
     def get_reward(self):
-        """VFH-QL Reward Function (Modified for Trap Safety)"""
+        #TODO: try the paper's definition of the reward function
         dist = math.sqrt(
             (self.target_coords[0] - self.robot_pose['x'])**2 + 
             (self.target_coords[1] - self.robot_pose['y'])**2
         )
         
-        # --- TERMINAL CONDITIONS ---
+         # --- TERMINAL CONDITIONS ---
         if dist < 0.30:
             self.termination_reason = "success"
             return 2500.0, True
@@ -487,48 +486,27 @@ class RLAgent(Node):
             self.termination_reason = "collision"
             return -250.0, True
         
-        action = self.previous_action
-        reward = 0.0
+        if self.done:
+            return -100, True
+        if dist < 0.3:
+            return 300, True
         
-        optimal_action = self._get_optimal_open_action()
-        action_is_open = self._is_action_open(action)
+        if self.prev_dist is None:
+            self.prev_dist = dist
         
-        # VFH Logic
-        if not action_is_open:
-            reward += -5.0
-        else:
-            if action == optimal_action:
-                reward += -1.0 # Small time penalty
-            else:
-                angle_diff = self._get_action_angle_difference(action, optimal_action)
-                penalty = -2.0 - (angle_diff / 90.0) * 3.0
-                reward += max(-5.0, penalty)
-        
-        # Hybrid Logic
-        if self.reward_mode == 'hybrid':
-            if self.prev_dist is not None:
-                delta_dist = self.prev_dist - dist
-                if action == optimal_action and delta_dist < 0:
-                     reward += 0.0 
-                else:
-                     reward += 20.0 * delta_dist
-            
-            if self.target_vis == 1:
-                reward += 1.0
-            
-            if self._check_oscillation():
-                reward += -3.0
-        
+        delta_dist = self.prev_dist - dist
         self.prev_dist = dist
-        return reward, False
+        
+        shaped_reward = -1 + (100 * delta_dist)
+        return shaped_reward, False
 
+    
     def choose_action(self, state_idx):
         if np.random.uniform(0, 1) < self.epsilon:
             return np.random.choice(self.action_space)
         else:
             return np.argmax(self.q_table[state_idx])
 
-    
     def execute_action(self, action):
         msg = Twist()
 

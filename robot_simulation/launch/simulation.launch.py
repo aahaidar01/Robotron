@@ -8,12 +8,11 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     pkg_name = 'robot_simulation'
-    robot_pose_maze = ['-0.5', '0.0', '0.1', '0.0']  # x, y, z, yaw
-    
+    robot_pose_maze = ['-0.5', '-2.1', '0.1', '1.57'] #['-0.7', '-2.2', '0.1', '1.57']  # x, y, z, yaw
     
     # 1. Path to our custom world and urdf
     world_file = os.path.join(
-        get_package_share_directory(pkg_name), 'worlds', 'maze_easy.world')
+        get_package_share_directory(pkg_name), 'worlds', 'maze_zig_zag.world')
     urdf_file = os.path.join(
         get_package_share_directory(pkg_name), 'urdf', 'my_robot.urdf')
 
