@@ -22,23 +22,21 @@ class RLAgent(Node):
         super().__init__('rl_agent')
         
         
-        # --- CONFIGURATION ---
-        self.target_coords = (1.5, -1.5) # target position
+        self.target_coords = (0.0, 1.8) # target position
         self.action_space = [0, 1, 2]  # Forward, Left, Right
-        
         
         # --- SPAWN CONFIGURATION ---
         self.random_spawn_enabled = False  # Toggle: False = fixed spawn, True = random
         self.fixed_spawn = (0.0, 0.0, 0.0)  # Default fixed spawn (updated per world)
         self.spawns = [
             # Easy
-            (1.5, -0.8, -1.57),
-            (0.0, -1.0, 0.0),
+            (0.5, 1.15, 1.57),
+            (0.5, 1.8, 3.14),
             # Medium
-            (-0.5, -1.5, 0.0),
-            (0.5, 0.0, -1.57),
+            (0.5, -0.5, 1.57),
+            (0.0, -0.5, 1.57),
             # Hard
-            (0.9, 0.9, -1.57),
+            (-0.5, -2.1, 1.57),
         ]
         
         self.set_state_client = self.create_client(SetEntityState, '/set_entity_state')
@@ -101,6 +99,7 @@ class RLAgent(Node):
         self.sectors = None
         self.safe_distance_threshold = 0.4  # distance to obstacle threshold
         self.collision_threshold = 0.20 # distance to obstacle for immediate collision
+        self.target_radius = 0.30  # distance to target for success
 
         self.reward_success = 2500.0  # Must be > (max_steps * penalty)
         self.reward_collision = -200.0
@@ -284,7 +283,7 @@ class RLAgent(Node):
             (self.target_coords[0] - self.robot_pose['x'])**2 + 
             (self.target_coords[1] - self.robot_pose['y'])**2
         )
-        if dist_to_target < 0.3:
+        if dist_to_target < self.target_radius:
             return
         
         if np.min(self.scan_ranges) < self.collision_threshold:
@@ -483,7 +482,7 @@ class RLAgent(Node):
         )
         
         # --- TERMINAL CONDITIONS ---
-        if dist < 0.30:
+        if dist < self.target_radius:
             self.termination_reason = "success"
             return self.reward_success , True
             
