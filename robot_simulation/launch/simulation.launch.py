@@ -1,7 +1,7 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, ExecuteProcess, TimerAction, RegisterEventHandler
+from launch.actions import IncludeLaunchDescription, ExecuteProcess, TimerAction, RegisterEventHandler, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.event_handlers import OnProcessExit
 from launch_ros.actions import Node
@@ -14,7 +14,7 @@ def generate_launch_description():
     world_file = os.path.join(
         get_package_share_directory(pkg_name), 'worlds', 'maze_zig_zag.world')
     urdf_file = os.path.join(
-        get_package_share_directory(pkg_name), 'urdf', 'my_robot.urdf')
+        get_package_share_directory(pkg_name), 'urdf', 'dagu_robot.urdf')
 
     # 2. Cleanup any zombie Gazebo processes first
     cleanup = ExecuteProcess(
@@ -25,7 +25,15 @@ def generate_launch_description():
         output='screen',
         name='gazebo_cleanup'
     )
-
+    
+    pkg_share_path = get_package_share_directory(pkg_name)
+    gazebo_model_path = os.path.join(pkg_share_path, '..')
+    
+    set_gazebo_model_path = SetEnvironmentVariable(
+        name='GAZEBO_MODEL_PATH',
+        value=[os.environ.get('GAZEBO_MODEL_PATH', ''), ':', gazebo_model_path]
+    )
+    
     # 3. Launch Gazebo with our world
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -68,6 +76,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        set_gazebo_model_path,
         cleanup,
         robot_state_publisher,
         delayed_gazebo,
