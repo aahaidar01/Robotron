@@ -26,17 +26,31 @@ class RLAgent(Node):
         self.action_space = [0, 1, 2]  # Forward, Left, Right
         
         # --- SPAWN CONFIGURATION ---
-        self.random_spawn_enabled = False  # Toggle: False = fixed spawn, True = random
-        self.fixed_spawn = (0.0, 0.0, 0.0)  # Default fixed spawn (updated per world)
+        self.random_spawn_enabled = True  # Toggle: False = fixed spawn, True = curriculum
+        self.fixed_spawn = (-0.5, -2.1, 0.0)  # Default fixed spawn (update per world)
+        
+        # Curriculum spawns: equal random sampling across all difficulty levels.
+        # Easy spawns produce quick successes that build Q-values,
+        # which then propagate backward to help harder spawns.
         self.spawns = [
-            # Easy
-            (0.5, 1.15, 1.57),
-            (0.5, 1.8, 3.14),
-            # Medium
-            (0.5, -0.5, 1.57),
-            (0.0, -0.5, 1.57),
-            # Hard
-            (-0.5, -2.1, 1.57),
+            # Level 1 - Easy: Past Splitter_3, short path to target
+            # Robot just needs to go roughly forward/toward target
+            (0.5, 1.5, 1.57),        # Right side of Zone 3, facing north
+            (0.0, 1.5, 1.57),        # Center of Zone 3, facing north
+            
+            # Level 2 - Medium: Between Splitter_2 and Splitter_3 (one turn)
+            # Robot must navigate RIGHT through Splitter_3 gap, then reach target
+            (0.0, 0.5, 1.57),        # Center of Zone 2, facing north
+            (-0.5, 0.5, 0.0),        # Left side of Zone 2, facing right toward gap
+            
+            # Level 3 - Hard: Between Splitter_1 and Splitter_2 (two turns)
+            # Robot must go LEFT through Splitter_2 gap, then RIGHT through Splitter_3
+            (-0.5, -0.6, 1.57),      # Left side of Zone 1, facing north
+            (0.5, -0.6, 3.14),       # Right side of Zone 1, facing left toward gap
+            
+            # Level 4 - Full maze: Start zone (three turns required)
+            (0.5, -1.8, 1.57),       # Right side, facing north (near Splitter_1 gap)
+            (-0.5, -2.1, 0.0),       # Original spawn, facing right
         ]
         
         self.set_state_client = self.create_client(SetEntityState, '/set_entity_state')
@@ -126,12 +140,13 @@ class RLAgent(Node):
         self.episode_collisions = []
         self.episode_timeouts = []
         self.action_counts = {0: 0, 1: 0, 2: 0}
+        
+        # --- CURRICULUM TRACKING ---
+        self.current_spawn = None  # Track which spawn was used
+        self.spawn_stats = {i: {'success': 0, 'total': 0} for i in range(len(self.spawns))}
     
         
         # --- Q-TABLE PERSISTENCE ---
-        self.log_dir = 'training_logs'
-        os.makedirs(self.log_dir, exist_ok=True)
-        
         self.log_dir = 'training_logs'
         os.makedirs(self.log_dir, exist_ok=True)
 
@@ -153,6 +168,10 @@ class RLAgent(Node):
         # --- LOGGING ---
         self.setup_logging()
         
+        # --- RESET COOLDOWN (replaces time.sleep) ---
+        self.resetting = False
+        self.reset_cooldown = 0
+        
         # --- CONTROL LOOP ---
         self.timer = self.create_timer(0.18, self.control_loop)
         
@@ -160,7 +179,7 @@ class RLAgent(Node):
         self.get_logger().info("RL Agent Started")
         self.get_logger().info(f"Target: {self.target_coords}")
         self.get_logger().info(f"State Space: {self.num_states} states")
-        self.get_logger().info(f"Random Spawn: {'ENABLED' if self.random_spawn_enabled else 'DISABLED'}")
+        self.get_logger().info(f"Spawn Mode: {'CURRICULUM (' + str(len(self.spawns)) + ' positions)' if self.random_spawn_enabled else 'FIXED ' + str(self.fixed_spawn)}")
         self.get_logger().info("=" * 60)
 
     def setup_logging(self):
@@ -169,12 +188,13 @@ class RLAgent(Node):
         
         with open(self.log_filename, 'w') as f:
             f.write("=" * 80 + "\n")
-            f.write("VFH-QL Training Log\n")
+            f.write("VFH-QL Training Log (Curriculum Learning)\n")
             f.write(f"Started: {timestamp}\n")
             f.write(f"Target: {self.target_coords}\n")
+            f.write(f"Spawns: {len(self.spawns)} positions\n")
             f.write(f"Hyperparameters: α={self.alpha}, γ={self.gamma}, ε_decay={self.epsilon_decay}\n")
             f.write("=" * 80 + "\n\n")
-            f.write("Episode,Steps,Reward,Success,Collision,Timeout,Epsilon,Alpha,Fwd,Left,Right\n")
+            f.write("Episode,Steps,Reward,Success,Collision,Timeout,Epsilon,Alpha,Fwd,Left,Right,SpawnIdx,SpawnX,SpawnY\n")
 
     def load_q_table(self):
         if self.checkpoint == 'fresh':
@@ -555,6 +575,13 @@ class RLAgent(Node):
         self.action_counts[action] += 1
 
     def control_loop(self):
+        # Wait for reset to settle (replaces time.sleep)
+        if self.resetting:
+            self.reset_cooldown -= 1
+            if self.reset_cooldown <= 0:
+                self.resetting = False
+            return
+        
         if self.scan_ranges is None or self.sectors is None:
             return
         
@@ -620,12 +647,24 @@ class RLAgent(Node):
         self.episode_collisions.append(is_collision)
         self.episode_timeouts.append(is_timeout)
         
+        # Track per-spawn statistics
+        if self.current_spawn is not None:
+            spawn_idx = self.current_spawn
+            self.spawn_stats[spawn_idx]['total'] += 1
+            self.spawn_stats[spawn_idx]['success'] += is_success
+        
+        spawn_info = ""
+        if self.current_spawn is not None:
+            s = self.spawns[self.current_spawn]
+            spawn_info = f" | Spawn {self.current_spawn} ({s[0]:.1f},{s[1]:.1f})"
+        
         self.get_logger().info(
             f"Episode {self.episode_num:4d} | "
             f"{outcome:12s} | "
             f"Steps: {self.step_count:4d} | "
             f"Reward: {self.episode_reward:7.1f} | "
             f"ε: {self.epsilon:.3f}"
+            f"{spawn_info}"
         )
 
         self.log_to_file(is_success, is_collision, is_timeout)
@@ -636,7 +675,7 @@ class RLAgent(Node):
         if self.episode_num % 100 == 0:
             self.save_q_table()
         
-        self.reset_simulation()
+        self.reset_episode()
 
     def log_statistics(self):
         last_10_rewards = self.episode_rewards[-10:]
@@ -662,14 +701,28 @@ class RLAgent(Node):
                 f"   Actions:       Fwd={fwd_pct:.1f}%, Left={left_pct:.1f}%, Right={right_pct:.1f}%"
             )
         
+        # Log per-spawn success rates
+        self.get_logger().info("   Spawn Stats:")
+        for idx, stats in self.spawn_stats.items():
+            if stats['total'] > 0:
+                rate = stats['success'] / stats['total'] * 100
+                s = self.spawns[idx]
+                self.get_logger().info(
+                    f"     Spawn {idx} ({s[0]:+.1f},{s[1]:+.1f}): "
+                    f"{rate:5.1f}% success ({stats['success']}/{stats['total']})"
+                )
+        
         self.get_logger().info("=" * 80)
-        # FIX: Don't reset here - move to reset_simulation()
 
     def log_to_file(self, success, collision, timeout):
         total_actions = sum(self.action_counts.values())
         fwd_pct = self.action_counts[0] / max(total_actions, 1) * 100
         left_pct = self.action_counts[1] / max(total_actions, 1) * 100
         right_pct = self.action_counts[2] / max(total_actions, 1) * 100
+        
+        spawn_idx = self.current_spawn if self.current_spawn is not None else -1
+        spawn_x = self.spawns[spawn_idx][0] if spawn_idx >= 0 else 0.0
+        spawn_y = self.spawns[spawn_idx][1] if spawn_idx >= 0 else 0.0
         
         with open(self.log_filename, 'a') as f:
             f.write(
@@ -683,7 +736,10 @@ class RLAgent(Node):
                 f"{self.alpha:.4f},"
                 f"{fwd_pct:.1f},"
                 f"{left_pct:.1f},"
-                f"{right_pct:.1f}\n"
+                f"{right_pct:.1f},"
+                f"{spawn_idx},"
+                f"{spawn_x:.2f},"
+                f"{spawn_y:.2f}\n"
             )
 
     def save_q_table(self):
@@ -694,8 +750,8 @@ class RLAgent(Node):
         np.save(os.path.join(self.q_table_dir, 'q_table_latest.npy'), self.q_table)
 
     def teleport_robot(self, x, y, yaw):
-        """Teleport robot to specified pose using Gazebo SetEntityState."""
-        if not self.set_state_client.wait_for_service(timeout_sec=2.0):
+        """Non-blocking teleport using Gazebo SetEntityState."""
+        if not self.set_state_client.service_is_ready():
             self.get_logger().warn('Set entity state service not available')
             return False
         
@@ -716,30 +772,33 @@ class RLAgent(Node):
         req.state.twist.linear.x = 0.0
         req.state.twist.angular.z = 0.0
         
-        future = self.set_state_client.call_async(req)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
-        
+        # Fire and forget - no blocking spin_until_future_complete
+        self.set_state_client.call_async(req)
         return True
     
-    def reset_simulation(self):
-        # Stop the robot first
+    def reset_episode(self):
+        """Non-blocking episode reset. Uses teleport for curriculum or reset_simulation for fixed spawn."""
+        # Stop the robot
         stop_msg = Twist()
         self.cmd_pub.publish(stop_msg)
         
         if self.random_spawn_enabled:
-            # Random spawn: use teleport (no /reset_simulation to preserve odom frame)
-            spawn = random.choice(self.spawns)
+            # Curriculum: pick a random spawn and teleport
+            self.current_spawn = random.randint(0, len(self.spawns) - 1)
+            spawn = self.spawns[self.current_spawn]
             self.teleport_robot(spawn[0], spawn[1], spawn[2])
-            time.sleep(0.3)
-            self.get_logger().info(f"Spawned at ({spawn[0]:.1f}, {spawn[1]:.1f}, yaw={spawn[2]:.2f})")
         else:
             # Fixed spawn: use /reset_simulation (resets odom cleanly to origin)
-            req = Empty.Request()
-            while not self.reset_client.wait_for_service(timeout_sec=1.0):
-                self.get_logger().warn('Reset service not available, waiting...')
-            future = self.reset_client.call_async(req)
-            rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
-            time.sleep(0.5)
+            self.current_spawn = None
+            if self.reset_client.service_is_ready():
+                self.reset_client.call_async(Empty.Request())
+            else:
+                self.get_logger().warn('Reset service not available')
+        
+        # Use cooldown instead of time.sleep()
+        # 3 cycles × 0.18s timer = ~0.54s for reset to settle
+        self.resetting = True
+        self.reset_cooldown = 3
         
         # Reset state variables
         self.scan_ranges = None
