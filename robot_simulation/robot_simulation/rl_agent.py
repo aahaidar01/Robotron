@@ -46,7 +46,7 @@ class RLAgent(Node):
             # Level 3 - Hard: Between Splitter_1 and Splitter_2 (two turns)
             # Robot must go LEFT through Splitter_2 gap, then RIGHT through Splitter_3
             (-0.5, -0.6, 1.57),      # Left side of Zone 1, facing north
-            (0.5, -0.6, 3.14),       # Right side of Zone 1, facing left toward gap
+            (0.5, -0.6, 1.57),       # Right side of Zone 1, facing north toward gap
             
             # Level 4 - Full maze: Start zone (three turns required)
             (0.5, -1.8, 1.57),       # Right side, facing north (near Splitter_1 gap)
@@ -56,26 +56,27 @@ class RLAgent(Node):
         self.set_state_client = self.create_client(SetEntityState, '/set_entity_state')
         
         
-        # --- STATE SPACE (512 States) ---
-        # Paper uses 8 Lidar + 1 Visibility + 1 Target Angle (Total 10 elements).
-        # We optimize Lidar to 5 sectors (Front, FL, FR, L, R) because Turtlebot can't strafe/reverse.
-        # Structure: 5 Bits (Lidar) + 1 Bit (Visible) + 3 Bits (Target Sector 0-7)
+        # --- STATE SPACE (2048 States) ---
+        # 5 Bits (Lidar) + 1 Bit (Visible) + 4 Distance Zones + 8 Target Sectors
+        # Distance zones break state aliasing at different splitter walls
         self.num_lidar_bits = 5  # 5 sectors: F, FL, L, R, FR
         self.num_vis_bits = 1
         self.num_target_sectors = 8
+        self.num_distance_zones = 4
+        self.distance_zone_boundaries = [1.0, 2.0, 3.0]  # meters
         
         # --- HYPERPARAMETERS ---
         self.alpha = 0.1       # Learning Rate
         self.gamma = 0.95      # Discount Factor
         self.epsilon = 1.0     # Exploration Rate
-        self.epsilon_decay = 0.9990 # Slower decay for better learning
+        self.epsilon_decay = 0.9995 # Slower decay for 2048 states (ε>0.1 until ~ep 4600)
         self.epsilon_min = 0.05
         
-        self.alpha_decay = 0.9995
-        self.alpha_min = 0.01
+        self.alpha_decay = 0.9998  # Slower decay: α>0.05 until ~ep 3500
+        self.alpha_min = 0.02
         
         # --- Q-TABLE ---
-        self.num_states = (2**self.num_lidar_bits) * (2**self.num_vis_bits) * self.num_target_sectors
+        self.num_states = (2**self.num_lidar_bits) * (2**self.num_vis_bits) * self.num_distance_zones * self.num_target_sectors
         self.q_table = np.zeros((self.num_states, len(self.action_space)))
         
         self.get_logger().info(f"Q-Table Initialized with {self.num_states} states.")
@@ -122,7 +123,7 @@ class RLAgent(Node):
         self.prev_dist = None
         
         # --- VFH-QL REWARD CONFIGURATION ---
-        self.reward_mode = 'paper'  # 'paper' or 'hybrid'
+        self.reward_mode = 'hybrid'  # Using hybrid with zone-based progress
         self.action_history = []
         self.max_action_history = 3
         
@@ -443,7 +444,21 @@ class RLAgent(Node):
         for i, val in enumerate(self.lidar_state):
             lidar_int += (val * (2**i))
         
-        state_idx = (lidar_int * 16) + (self.target_vis * 8) + self.target_sector
+        # Distance zone: 0=close(<1m), 1=med(1-2m), 2=far(2-3m), 3=very far(>3m)
+        dist = math.sqrt(
+            (self.target_coords[0] - self.robot_pose['x'])**2 + 
+            (self.target_coords[1] - self.robot_pose['y'])**2
+        )
+        distance_zone = len(self.distance_zone_boundaries)  # default: furthest zone
+        for i, boundary in enumerate(self.distance_zone_boundaries):
+            if dist < boundary:
+                distance_zone = i
+                break
+        
+        state_idx = (lidar_int * (2 * self.num_distance_zones * self.num_target_sectors)) + \
+                     (self.target_vis * (self.num_distance_zones * self.num_target_sectors)) + \
+                     (distance_zone * self.num_target_sectors) + \
+                     self.target_sector
         return state_idx
     
 
@@ -527,14 +542,27 @@ class RLAgent(Node):
                 penalty = -2.0 - (angle_diff / 90.0) * 3.0
                 reward += max(-5.0, penalty)
         
-        # Hybrid Logic
+        # Hybrid Logic: zone-based progress + visibility + oscillation
         if self.reward_mode == 'hybrid':
+            # Zone progress bonus: reward entering a closer distance zone
+            # This is safe because zones are coarse (won't create distance trap)
+            current_zone = len(self.distance_zone_boundaries)
+            for i, boundary in enumerate(self.distance_zone_boundaries):
+                if dist < boundary:
+                    current_zone = i
+                    break
+            
             if self.prev_dist is not None:
-                delta_dist = self.prev_dist - dist
-                if action == optimal_action and delta_dist < 0:
-                     reward += 0.0 
-                else:
-                     reward += 20.0 * delta_dist
+                prev_zone = len(self.distance_zone_boundaries)
+                for i, boundary in enumerate(self.distance_zone_boundaries):
+                    if self.prev_dist < boundary:
+                        prev_zone = i
+                        break
+                
+                if current_zone < prev_zone:
+                    reward += 15.0   # Moved to a closer zone
+                elif current_zone > prev_zone:
+                    reward += -15.0  # Moved to a farther zone (symmetric to prevent boundary exploit)
             
             if self.target_vis == 1:
                 reward += 1.0
