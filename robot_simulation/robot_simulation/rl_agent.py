@@ -35,18 +35,18 @@ class RLAgent(Node):
         self.spawns = [
             # Level 1 - Easy: Past Splitter_3, short path to target
             # Robot just needs to go roughly forward/toward target
-            (0.5, 1.5, 1.57),        # Right side of Zone 3, facing north
-            (0.0, 1.5, 1.57),        # Center of Zone 3, facing north
+            (0.5, 1.0, 1.57),        # Right side of Zone 3, facing north
+            (0.0, 0.5, 1.57),        # Center of Zone 3, facing north
             
             # Level 2 - Medium: Between Splitter_2 and Splitter_3 (one turn)
             # Robot must navigate RIGHT through Splitter_3 gap, then reach target
-            (0.0, 0.5, 1.57),        # Center of Zone 2, facing north
+            (-0.5, 0.0, 1.57),        # Center of Zone 2, facing north
             (-0.5, 0.5, 0.0),        # Left side of Zone 2, facing right toward gap
             
             # Level 3 - Hard: Between Splitter_1 and Splitter_2 (two turns)
             # Robot must go LEFT through Splitter_2 gap, then RIGHT through Splitter_3
             (-0.5, -0.6, 1.57),      # Left side of Zone 1, facing north
-            (0.5, -0.6, 1.57),       # Right side of Zone 1, facing north toward gap
+            (0.5, -0.6, 3.14),       # Right side of Zone 1, facing west toward gap
             
             # Level 4 - Full maze: Start zone (three turns required)
             (0.5, -1.8, 1.57),       # Right side, facing north (near Splitter_1 gap)
