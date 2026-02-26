@@ -14,7 +14,7 @@ def generate_launch_description():
     world_file = os.path.join(
         get_package_share_directory(pkg_name), 'worlds', 'maze_zig_zag.world')
     urdf_file = os.path.join(
-        get_package_share_directory(pkg_name), 'urdf', 'robot_test.urdf')
+        get_package_share_directory(pkg_name), 'urdf', 'dagu.urdf')
 
     # 2. Cleanup any zombie Gazebo processes first
     cleanup = ExecuteProcess(
