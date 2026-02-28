@@ -108,10 +108,10 @@
 
     <inertial>
       <origin xyz="0 0 0" />
-      <mass value="2.8498940e-02" />
-      <inertia ixx="1.1175580e-05" ixy="-4.2369783e-11" ixz="-5.9381719e-09"
-               iyy="1.1192413e-05" iyz="-1.4400107e-11"
-               izz="2.0712558e-05" />
+      <mass value="0.15" />
+      <inertia ixx="0.00018" ixy="0.0" ixz="0.0"
+               iyy="0.00018" iyz="0.0"
+               izz="0.00027" />
       </inertial>
   </link>
 
@@ -141,10 +141,10 @@
 
     <inertial>
       <origin xyz="0 0 0" />
-      <mass value="2.8498940e-02" />
-      <inertia ixx="1.1175580e-05" ixy="-4.2369783e-11" ixz="-5.9381719e-09"
-               iyy="1.1192413e-05" iyz="-1.4400107e-11"
-               izz="2.0712558e-05" />
+      <mass value="0.15" />
+      <inertia ixx="0.00018" ixy="0.0" ixz="0.0"
+               iyy="0.00018" iyz="0.0"
+               izz="0.00027" />
       </inertial>
   </link>
 
@@ -174,10 +174,10 @@
 
     <inertial>
       <origin xyz="0 0 0" />
-      <mass value="2.8498940e-02" />
-      <inertia ixx="1.1175580e-05" ixy="-4.2369783e-11" ixz="-5.9381719e-09"
-               iyy="1.1192413e-05" iyz="-1.4400107e-11"
-               izz="2.0712558e-05" />
+      <mass value="0.15" />
+      <inertia ixx="0.00018" ixy="0.0" ixz="0.0"
+               iyy="0.00018" iyz="0.0"
+               izz="0.00027" />
       </inertial>
   </link>
 
@@ -207,10 +207,10 @@
 
     <inertial>
       <origin xyz="0 0 0" />
-      <mass value="2.8498940e-02" />
-      <inertia ixx="1.1175580e-05" ixy="-4.2369783e-11" ixz="-5.9381719e-09"
-               iyy="1.1192413e-05" iyz="-1.4400107e-11"
-               izz="2.0712558e-05" />
+      <mass value="0.15" />
+      <inertia ixx="0.00018" ixy="0.0" ixz="0.0"
+               iyy="0.00018" iyz="0.0"
+               izz="0.00027" />
       </inertial>
   </link>
 
@@ -257,34 +257,46 @@
   <!-- Setting up robot simulation params for Gazebo -->
 
   <gazebo reference="wheel_front_left_link">
-    <mu1>0.10</mu1> 
-    <mu2>0.10</mu2>
-    <kp>500000.0</kp>
-    <kd>10.0</kd>
+    <mu1>0.5</mu1> 
+    <mu2>0.5</mu2>
+
+    <fdir>1 0 0 </fdir> <!-- Friction direction for anisotropic friction -->
+    <minDepth>0.001</minDepth> <!-- Minimum depth for contact -->
+    <kp>1000000.0</kp>
+    <kd>100.0</kd>
     <material>Gazebo/FlatBlack</material>
   </gazebo>
 
   <gazebo reference="wheel_front_right_link">
-    <mu1>0.10</mu1>
-    <mu2>0.10</mu2>
-    <kp>500000.0</kp>
-    <kd>10.0</kd>
+    <mu1>0.5</mu1> 
+    <mu2>0.5</mu2>
+
+    <fdir>1 0 0 </fdir> <!-- Friction direction for anisotropic friction -->
+    <minDepth>0.001</minDepth> <!-- Minimum depth for contact -->
+    <kp>1000000.0</kp>
+    <kd>100.0</kd>
     <material>Gazebo/FlatBlack</material>
   </gazebo>
 
   <gazebo reference="wheel_rear_left_link">
-    <mu1>0.10</mu1>
-    <mu2>0.10</mu2>
-    <kp>500000.0</kp>
-    <kd>10.0</kd>
+    <mu1>0.5</mu1> 
+    <mu2>0.5</mu2>
+
+    <fdir>1 0 0 </fdir> <!-- Friction direction for anisotropic friction -->
+    <minDepth>0.001</minDepth> <!-- Minimum depth for contact -->
+    <kp>1000000.0</kp>
+    <kd>100.0</kd>
     <material>Gazebo/FlatBlack</material>
   </gazebo>
 
   <gazebo reference="wheel_rear_right_link">
-    <mu1>0.10</mu1>
-    <mu2>0.10</mu2>
-    <kp>500000.0</kp>
-    <kd>10.0</kd>
+    <mu1>0.5</mu1> 
+    <mu2>0.5</mu2>
+
+    <fdir>1 0 0 </fdir> <!-- Friction direction for anisotropic friction -->
+    <minDepth>0.001</minDepth> <!-- Minimum depth for contact -->
+    <kp>1000000.0</kp>
+    <kd>100.0</kd>
     <material>Gazebo/FlatBlack</material>
   </gazebo>
 
