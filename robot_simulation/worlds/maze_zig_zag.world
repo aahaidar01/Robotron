@@ -2,7 +2,32 @@
 <sdf version='1.7'>
   <world name='default'>
     <include><uri>model://sun</uri></include>
-    <include><uri>model://ground_plane</uri></include>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry>
+          <surface>
+            <friction>
+              <ode>
+                <mu>0.4</mu>
+                <mu2>0.25</mu2>
+              </ode>
+            </friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry>
+          <material>
+            <script>
+              <uri>file://media/materials/scripts/gazebo.material</uri>
+              <name>Gazebo/Wood</name>
+            </script>
+          </material>
+        </visual>
+      </link>
+    </model>
 
     <physics type='ode'>
       <max_step_size>0.001</max_step_size>
@@ -50,7 +75,6 @@
         </visual>
       </link>
 
-      <!-- Splitter walls shortened to 0.8m for wider 1.2m gaps -->
       <link name='Wall_Splitter_1'>
         <pose>-0.6 -1.25 0 0 0 0</pose> 
         <collision name='Collision'><geometry><box><size>0.8 0.10 1.0</size></box></geometry></collision>

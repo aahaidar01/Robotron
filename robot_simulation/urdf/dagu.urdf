@@ -258,9 +258,9 @@
 
   <gazebo reference="wheel_front_left_link">
     <mu1>0.5</mu1> 
-    <mu2>0.5</mu2>
+    <mu2>0.05</mu2>
 
-    <fdir>1 0 0 </fdir> <!-- Friction direction for anisotropic friction -->
+    <fdir1>1 0 0 </fdir1> <!-- Friction direction for anisotropic friction -->
     <minDepth>0.001</minDepth> <!-- Minimum depth for contact -->
     <kp>1000000.0</kp>
     <kd>100.0</kd>
@@ -269,9 +269,9 @@
 
   <gazebo reference="wheel_front_right_link">
     <mu1>0.5</mu1> 
-    <mu2>0.5</mu2>
+    <mu2>0.05</mu2>
 
-    <fdir>1 0 0 </fdir> <!-- Friction direction for anisotropic friction -->
+    <fdir1>1 0 0 </fdir1> <!-- Friction direction for anisotropic friction -->
     <minDepth>0.001</minDepth> <!-- Minimum depth for contact -->
     <kp>1000000.0</kp>
     <kd>100.0</kd>
@@ -280,9 +280,9 @@
 
   <gazebo reference="wheel_rear_left_link">
     <mu1>0.5</mu1> 
-    <mu2>0.5</mu2>
+    <mu2>0.05</mu2>
 
-    <fdir>1 0 0 </fdir> <!-- Friction direction for anisotropic friction -->
+    <fdir1>1 0 0 </fdir1> <!-- Friction direction for anisotropic friction -->
     <minDepth>0.001</minDepth> <!-- Minimum depth for contact -->
     <kp>1000000.0</kp>
     <kd>100.0</kd>
@@ -291,9 +291,9 @@
 
   <gazebo reference="wheel_rear_right_link">
     <mu1>0.5</mu1> 
-    <mu2>0.5</mu2>
+    <mu2>0.05</mu2>
 
-    <fdir>1 0 0 </fdir> <!-- Friction direction for anisotropic friction -->
+    <fdir1>1 0 0 </fdir1> <!-- Friction direction for anisotropic friction -->
     <minDepth>0.001</minDepth> <!-- Minimum depth for contact -->
     <kp>1000000.0</kp>
     <kd>100.0</kd>
@@ -404,22 +404,21 @@
       <left_joint>wheel_rear_left_joint</left_joint>
       <right_joint>wheel_rear_right_joint</right_joint>
       
-      <!-- Kinematics -->
+      <wheel_separation>0.240</wheel_separation>
+      <wheel_diameter>0.120</wheel_diameter>
+      
       <wheel_separation>0.240</wheel_separation>
       <wheel_diameter>0.120</wheel_diameter>
 
-      <max_wheel_torque>0.67</max_wheel_torque> <!-- Was 20Nm -->
+      <max_wheel_torque>0.67</max_wheel_torque> 
       <max_wheel_acceleration>1.0</max_wheel_acceleration>
 
       <command_topic>cmd_vel</command_topic>
       <publish_odom>true</publish_odom>
       <publish_odom_tf>true</publish_odom_tf>
-      
       <publish_wheel_tf>true</publish_wheel_tf>
-      
       <odometry_topic>odom</odometry_topic>
       <odometry_frame>odom</odometry_frame>
-      
       <robot_base_frame>base_footprint</robot_base_frame>
     </plugin>
   </gazebo>
