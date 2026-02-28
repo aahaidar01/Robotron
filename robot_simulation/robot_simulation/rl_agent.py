@@ -47,9 +47,12 @@ class RLAgent(Node):
             # Robot must go LEFT through Splitter_2 gap, then RIGHT through Splitter_3
             (-0.5, -0.6, 1.57),      # Left side of Zone 1, facing north
             (0.5, -0.6, 3.14),       # Right side of Zone 1, facing west toward gap
+            (0.5, -1.2, 1.57),      # Right side of Zone 1, facing north Splitter_2
+
             
             # Level 4 - Full maze: Start zone (three turns required)
             (0.5, -1.8, 1.57),       # Right side, facing north (near Splitter_1 gap)
+            (0.0, -2.1, 0.0),       # Center, facing north (original spawn, near Splitter_1)
             (-0.5, -2.1, 0.0),       # Original spawn, facing right
         ]
         
@@ -112,7 +115,7 @@ class RLAgent(Node):
         
         # --- SECTOR DEFINITIONS ---
         self.sectors = None
-        self.safe_distance_threshold = 0.4  # distance to obstacle threshold
+        self.safe_distance_threshold = 0.6  # distance to obstacle threshold
         self.collision_threshold = 0.20 # distance to obstacle for immediate collision
         self.target_radius = 0.30  # distance to target for success
 
