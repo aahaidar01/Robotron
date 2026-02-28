@@ -35,6 +35,7 @@ class RLAgent(Node):
         self.spawns = [
             # Level 1 - Easy: Past Splitter_3, short path to target
             # Robot just needs to go roughly forward/toward target
+            (0.5, 1.3, 1.57),        # Right side of Zone 3, facing north
             (0.5, 1.0, 1.57),        # Right side of Zone 3, facing north
             (0.0, 0.5, 1.57),        # Center of Zone 3, facing north
             
