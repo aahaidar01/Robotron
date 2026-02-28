@@ -115,7 +115,7 @@ class RLAgent(Node):
         
         # --- SECTOR DEFINITIONS ---
         self.sectors = None
-        self.safe_distance_threshold = 0.4  # distance to obstacle threshold
+        self.safe_distance_threshold = 0.6  # distance to obstacle threshold
         self.collision_threshold = 0.20 # distance to obstacle for immediate collision
         self.target_radius = 0.30  # distance to target for success
 
