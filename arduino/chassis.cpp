@@ -1,5 +1,6 @@
 #include "chassis.h"
 #include "config.h"
+#include "mbed.h"
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
@@ -56,8 +57,8 @@ float current_vTarget = 0.0f;
 float current_omegaTarget = 0.0f;
 
 // Base Speeds
-float V_FWD = 0.30f;
-float V_TURN = (0.30f / 6.0f);
+float V_FWD = 0.18f;
+float V_TURN = 0.03f;
 static constexpr float OMEGA_TURN = 0.5f;
 
 // --- Global Odometry Variables ---
@@ -212,13 +213,21 @@ void init_chassis()
         delay(200);
     }
 
-    Serial.println("IMU Gyro Fully Calibrated! Safe to start.");
-    delay(1000);
+    Serial.println("IMU Gyro Fully Calibrated!");
+    Serial.println(">>> YAW CONVENTION CHECK: Turn robot LEFT (CCW from above).");
+    Serial.println(">>> You should see POSITIVE gyro Z values below.");
+    Serial.println(">>> If negative, flip the sign in readOmegaZ_IMU().");
+    for (int i = 0; i < 25; i++) {  // 5 seconds of readings
+        Serial.print("Gyro Z: ");
+        Serial.println(readOmegaZ_IMU(), 3);
+        delay(200);
+    }
+    Serial.println(">>> End of yaw check. Safe to start.");
 
-    // Reset odometry AFTER calibration is finished
-    odom_x_m = 0.0f;
-    odom_y_m = 0.0f;
-    odom_th_rad = 0.0f;
+    // Reset odometry to spawn position (world frame, matching simulation)
+    odom_x_m = SPAWN_X;
+    odom_y_m = SPAWN_Y;
+    odom_th_rad = SPAWN_YAW;
 
     // Conservative starting PID gains
     pidSpeed.Kp = 150.0f;
@@ -364,8 +373,10 @@ bool is_target_reached()
 
 void reset_odometry()
 {
-    odom_x_m = 0.0f;
-    odom_y_m = 0.0f;
+    // Reset to spawn position (world frame), not (0,0).
+    // This ensures target distance/angle calculations match simulation.
+    odom_x_m = SPAWN_X;
+    odom_y_m = SPAWN_Y;
 
     noInterrupts();
     ticksL = 0;
@@ -374,10 +385,8 @@ void reset_odometry()
     prevTicksL = 0;
     prevTicksR = 0;
 
-    // Capture current IMU heading as the new zero reference
-    imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-    yaw_offset_rad = euler.x() * (PI / 180.0f);
-    odom_th_rad = 0.0f;
+    // Reset yaw to spawn heading
+    odom_th_rad = SPAWN_YAW;
 
     pidSpeed.reset();
     pidOmega.reset();

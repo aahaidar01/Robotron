@@ -1,12 +1,13 @@
 #include "lidar_sensor.h"
 #include "chassis.h" // Brings in emergency_stop() and get_current_pose()
 #include "config.h"
+#include "mbed.h"
 #include <RPLidar.h>
 #include <Arduino.h>
 #include <math.h>
 
 #define BAUD_RATE 115200
-#define RPLIDAR_MOTOR 3
+#define RPLIDAR_MOTOR PJ_7
 
 RPLidar lidar;
 
@@ -14,13 +15,14 @@ RPLidar lidar;
 int lidar_state[5] = {0, 0, 0, 0, 0};
 float sector_min_distance[5];
 float lidar_target_angle = 0.0;
+float target_angle_ccw_deg = 0.0;   // CCW convention for Q-table sector 
 float distance_to_target = 0.0;
 int target_vis = 0;
 float min_dist_in_target_window = 12000.0;
 bool collision_detected = false;
 
 // Thresholds
-const float SAFE_DIST = 400.0;
+const float SAFE_DIST = 600.0;
 const float COLLISION_DIST = 200.0;
 const float RANGE_MIN = 150.0;
 const float RANGE_MAX = 12000.0;
@@ -157,11 +159,9 @@ void check_collision(float distance) {
 
 void calculate_target_angle()
 {
-  // 1. Fetch the latest odometry directly from the chassis teammate's code
   float current_x, current_y, current_yaw;
   get_current_pose(current_x, current_y, current_yaw);
 
-  // 2. Do the math using the local variables
   float dx = TARGET_X - current_x;
   float dy = TARGET_Y - current_y;
   distance_to_target = sqrt((dx * dx) + (dy * dy));
@@ -170,13 +170,16 @@ void calculate_target_angle()
   float relative_angle = global_target_angle - current_yaw;
   float theta_robot_deg = relative_angle * (180.0 / PI);
 
-  theta_robot_deg = 360.0 - theta_robot_deg; // CCW to CW fix
+  // --- Store CCW angle for target sector (Python convention) ---
+  float ccw_deg = theta_robot_deg;
+  while (ccw_deg > 180.0)  ccw_deg -= 360.0;
+  while (ccw_deg < -180.0) ccw_deg += 360.0;
+  target_angle_ccw_deg = ccw_deg;  // kept in [-180, 180] like Python
 
-  while (theta_robot_deg >= 360.0)
-    theta_robot_deg -= 360.0;
-  while (theta_robot_deg < 0.0)
-    theta_robot_deg += 360.0;
-
+  // --- CW conversion for RPLIDAR ray matching only ---
+  theta_robot_deg = 360.0 - theta_robot_deg;
+  while (theta_robot_deg >= 360.0) theta_robot_deg -= 360.0;
+  while (theta_robot_deg < 0.0)    theta_robot_deg += 360.0;
   lidar_target_angle = theta_robot_deg;
 }
 
@@ -192,8 +195,8 @@ void update_sector_min_distance(float distance, float angle)
 {
   for (int i = 0; i < 5; i++)
   {
-    float start_angle = SECTORS[i];
-    float end_angle = SECTORS[i];
+    float start_angle = SECTORS[i][0];
+    float end_angle = SECTORS[i][1];
 
     bool inSector = false;
     if (start_angle < end_angle)
@@ -261,12 +264,11 @@ int get_distance_zone()
 
 int get_target_sector()
 {
-  float shifted_angle = lidar_target_angle + 22.5;
-  if (shifted_angle >= 360.0)
-    shifted_angle -= 360.0;
-
-  int sector = (int)(shifted_angle / 45.0);
-  return sector % 8;
+  float deg = target_angle_ccw_deg;  // [-180, 180]
+  if (deg < 0) deg += 360.0;        // [0, 360) — same as Python
+  float shifted = deg + 22.5;
+  if (shifted >= 360.0) shifted -= 360.0;
+  return ((int)(shifted / 45.0)) % 8;
 }
 
 void reset_lidar_state() {

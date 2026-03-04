@@ -37,6 +37,11 @@ void reset_episode() {
     Serial.println("================================================");
     Serial.print("Episode "); Serial.print(episode_count);
     Serial.println(" started. Robot is live.");
+    Serial.print("Spawn: ("); Serial.print(SPAWN_X, 2);
+    Serial.print(", "); Serial.print(SPAWN_Y, 2);
+    Serial.print(") yaw="); Serial.println(SPAWN_YAW, 2);
+    Serial.print("Target: ("); Serial.print(TARGET_X, 2);
+    Serial.print(", "); Serial.print(TARGET_Y, 2); Serial.println(")");
     Serial.println("================================================");
 }
 
