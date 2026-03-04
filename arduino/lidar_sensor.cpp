@@ -279,3 +279,45 @@ void reset_lidar_state() {
     for (int i = 0; i < 5; i++) lidar_state[i] = 0;
     target_vis = 0;
 }
+
+void log_lidar_state(int level)
+{
+    if (level <= 0) return;
+
+    int distance_zone = get_distance_zone();
+    int target_sector = get_target_sector();
+
+    if (level == 1)
+    {
+        // Compact: L:10110 vis:1 dz:2 ts:3 dist:2.35
+        Serial.print("L:");
+        for (int i = 0; i < 5; i++) Serial.print(lidar_state[i]);
+        Serial.print(" vis:"); Serial.print(target_vis);
+        Serial.print(" dz:");  Serial.print(distance_zone);
+        Serial.print(" ts:");  Serial.print(target_sector);
+        Serial.print(" d:");   Serial.print(distance_to_target, 2);
+    }
+    else
+    {
+        // Detailed multi-line
+        Serial.print("[LDR] sectors: ");
+        for (int i = 0; i < 5; i++) {
+            Serial.print(lidar_state[i]);
+            Serial.print(" ");
+        }
+        Serial.print("| mins(mm): ");
+        for (int i = 0; i < 5; i++) {
+            Serial.print((int)sector_min_distance[i]);
+            Serial.print(" ");
+        }
+        Serial.println();
+
+        Serial.print("[LDR] vis:"); Serial.print(target_vis);
+        Serial.print(" dz:");  Serial.print(distance_zone);
+        Serial.print(" ts:");  Serial.print(target_sector);
+        Serial.print(" | dist:"); Serial.print(distance_to_target, 3);
+        Serial.print("m | tgt_ccw:"); Serial.print(target_angle_ccw_deg, 1);
+        Serial.print(" tgt_cw:"); Serial.print(lidar_target_angle, 1);
+        Serial.print(" | scans:"); Serial.println(scans_since_reset);
+    }
+}

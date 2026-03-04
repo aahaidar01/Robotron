@@ -16,4 +16,9 @@ bool is_target_reached();
 
 void reset_odometry();
 
+// Diagnostics — call from main loop, gated by LOG_LEVEL
+//   level 1: compact (pose + speed)
+//   level 2: full (encoders, IMU, PID, motor commands)
+void log_chassis_state(int level);
+
 #endif

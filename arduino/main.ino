@@ -11,10 +11,12 @@ const int RESET_BUTTON_PIN = 10;
    RL AGENT CONFIGURATION
    ======================================================================== */
 const int NUM_ACTIONS = 3;
+const char* ACTION_NAMES[] = {"FWD", "LFT", "RGT"};
 
 // Loop Timing (180ms = ~5.5Hz, matching Python training timer)
 const unsigned long CONTROL_LOOP_INTERVAL_MS = 180;
 unsigned long last_step_time = 0;
+static int step_count = 0;
 
 // Episode State
 static bool episode_ended = false;
@@ -31,6 +33,7 @@ void reset_episode() {
     reset_lidar_state();  // Resets scans_since_reset and collision flag
     target_reached = false;
     episode_ended = false;
+    step_count = 0;
     last_step_time = millis();
     last_collision_time = millis();  // Cooldown before first action
     episode_count++;
@@ -135,4 +138,36 @@ void loop() {
 
     // --- EXECUTE ---
     execute_motor_command(best_action);
+    step_count++;
+
+    // --- LOGGING (gated by LOG_LEVEL in config.h) ---
+#if LOG_LEVEL == 1
+    // One compact line per step:
+    // #42 S:1234 A:FWD Q:12.4 | xy(-0.35,-1.80) yaw:0.12 v:0.18 w:0.02 | L:10110 vis:1 dz:2 ts:3 d:2.35
+    Serial.print("#"); Serial.print(step_count);
+    Serial.print(" S:"); Serial.print(state_idx);
+    Serial.print(" A:"); Serial.print(ACTION_NAMES[best_action]);
+    Serial.print(" Q:"); Serial.print(max_q_value, 1);
+    Serial.print(" | ");
+    log_chassis_state(1);
+    Serial.print(" | ");
+    log_lidar_state(1);
+    Serial.println();
+#elif LOG_LEVEL >= 2
+    // Multi-line detailed output per step
+    Serial.println("--------------------------------------------");
+    Serial.print("[RL]  step:"); Serial.print(step_count);
+    Serial.print(" state:"); Serial.print(state_idx);
+    Serial.print(" act:"); Serial.print(best_action);
+    Serial.print("("); Serial.print(ACTION_NAMES[best_action]); Serial.print(")");
+    Serial.print(" Q:"); Serial.print(max_q_value, 2);
+    Serial.print(" [");
+    for (int a = 0; a < NUM_ACTIONS; a++) {
+        Serial.print(Q_TABLE[state_idx][a], 1);
+        if (a < NUM_ACTIONS - 1) Serial.print(", ");
+    }
+    Serial.println("]");
+    log_lidar_state(2);
+    log_chassis_state(2);
+#endif
 }

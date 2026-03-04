@@ -2,6 +2,12 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+// Logging verbosity (change this one number to control Serial output):
+//   0 = Silent   — only episode start/end messages
+//   1 = Summary  — one compact line per RL step (~5.5Hz)
+//   2 = Detailed — full per-module breakdown each step (for debugging)
+#define LOG_LEVEL 1
+
 // Target location in world frame (change per maze layout)
 const float TARGET_X = 0.0f;
 const float TARGET_Y = 1.8f;

@@ -72,6 +72,12 @@ static uint32_t stall_timer_ms = 0;
 const uint32_t STALL_TIMEOUT_MS = 800;
 static uint32_t last_command_time_ms = 0;
 
+// --- Debug Snapshot (updated every PID cycle, read by log_chassis_state) ---
+static float dbg_vL = 0, dbg_vR = 0, dbg_vAvg = 0;
+static float dbg_omegaImu = 0, dbg_omegaEnc = 0, dbg_omegaFused = 0;
+static float dbg_uV = 0, dbg_uW = 0;
+static int   dbg_cmdL = 0, dbg_cmdR = 0;
+
 // IMU
 Adafruit_BNO055 bno(55, 0x28);
 
@@ -284,6 +290,12 @@ void update_chassis()
     int cmdL = (int)lround(uV - uW);
     int cmdR = (int)lround(uV + uW);
 
+    // --- Store debug snapshot for log_chassis_state() ---
+    dbg_vL = vL; dbg_vR = vR; dbg_vAvg = vAvg;
+    dbg_omegaImu = omegaImu; dbg_omegaEnc = omegaEnc; dbg_omegaFused = omegaFused;
+    dbg_uV = uV; dbg_uW = uW;
+    dbg_cmdL = cmdL; dbg_cmdR = cmdR;
+
     // --- SAFETY: Command watchdog ---
     if (millis() - last_command_time_ms > 500)
     {
@@ -392,4 +404,51 @@ void reset_odometry()
     pidOmega.reset();
     stall_timer_ms = 0;
     last_command_time_ms = millis();
+}
+
+void log_chassis_state(int level)
+{
+    if (level <= 0) return;
+
+    if (level == 1)
+    {
+        // Compact: xy(-0.35,-1.80) yaw:0.12 v:0.18 w:0.02
+        Serial.print("xy("); Serial.print(odom_x_m, 2);
+        Serial.print(",");   Serial.print(odom_y_m, 2);
+        Serial.print(") yaw:"); Serial.print(odom_th_rad, 2);
+        Serial.print(" v:");  Serial.print(dbg_vAvg, 2);
+        Serial.print(" w:");  Serial.print(dbg_omegaFused, 2);
+    }
+    else
+    {
+        // Detailed multi-line
+        Serial.print("[CHS] pose: ("); Serial.print(odom_x_m, 3);
+        Serial.print(", "); Serial.print(odom_y_m, 3);
+        Serial.print(") yaw: "); Serial.print(odom_th_rad, 3);
+        Serial.print(" rad ("); Serial.print(odom_th_rad * 180.0f / 3.1415926f, 1);
+        Serial.println(" deg)");
+
+        Serial.print("[CHS] wheels: vL="); Serial.print(dbg_vL, 3);
+        Serial.print(" vR="); Serial.print(dbg_vR, 3);
+        Serial.print(" vAvg="); Serial.print(dbg_vAvg, 3);
+        Serial.print(" | tgt_v="); Serial.print(current_vTarget, 3);
+        Serial.print(" tgt_w="); Serial.println(current_omegaTarget, 3);
+
+        Serial.print("[CHS] omega: imu="); Serial.print(dbg_omegaImu, 3);
+        Serial.print(" enc="); Serial.print(dbg_omegaEnc, 3);
+        Serial.print(" fused="); Serial.println(dbg_omegaFused, 3);
+
+        Serial.print("[CHS] pid: uV="); Serial.print(dbg_uV, 1);
+        Serial.print(" uW="); Serial.print(dbg_uW, 1);
+        Serial.print(" | cmd: L="); Serial.print(dbg_cmdL);
+        Serial.print(" R="); Serial.print(dbg_cmdR);
+        Serial.print(" | stall: "); Serial.println(stall_timer_ms);
+
+        noInterrupts();
+        int32_t tL = ticksL;
+        int32_t tR = ticksR;
+        interrupts();
+        Serial.print("[CHS] ticks: L="); Serial.print(tL);
+        Serial.print(" R="); Serial.println(tR);
+    }
 }

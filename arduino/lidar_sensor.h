@@ -26,4 +26,9 @@ int get_state_index();
 
 void reset_lidar_state();
 
+// 5. Diagnostics — call from main loop, gated by LOG_LEVEL
+//    level 1: compact one-line summary (sectors + target info)
+//    level 2: full detail (sector distances, angles, scans count)
+void log_lidar_state(int level);
+
 #endif // LIDAR_SENSOR_H
