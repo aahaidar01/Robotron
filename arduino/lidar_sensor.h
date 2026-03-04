@@ -24,4 +24,6 @@ bool check_immediate_collision();
 // Runs all the target and distance math, returning the final 0-2047 Q-table index
 int get_state_index();
 
+void reset_lidar_state();
+
 #endif // LIDAR_SENSOR_H
