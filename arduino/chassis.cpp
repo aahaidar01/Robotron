@@ -20,21 +20,15 @@
 //       so we use mbed pin names for those.
 
 // ---- Mbed Pin Objects ----
-// Left Encoder
-mbed::InterruptIn encL_A(PD_4);
-mbed::DigitalIn   encL_B(PG_10);
+// Right Encoder
+mbed::InterruptIn encR_A(PD_4);
+mbed::DigitalIn   encR_B(PG_10);
 
-// Right Encoder (Using standard Arduino pins 4 and 0 via Mbed)
-mbed::InterruptIn encR_A(PC_7);  // Arduino Pin 4 resolves to PC_7 on Portenta
-mbed::DigitalIn   encR_B(PH_15); // Arduino Pin 0 resolves to PH_15 on Portenta
+// Left Encoder (Using standard Arduino pins 4 and 0 via Mbed)
+mbed::InterruptIn encL_A(PC_7);  // Arduino Pin 4 resolves to PC_7 on Portenta
+mbed::DigitalIn   encL_B(PH_15); // Arduino Pin 0 resolves to PH_15 on Portenta
 
 
-// ---- Motor Pin Definitions (Arduino pin numbers) ----
-// Hat Carrier 40-pin header mapping:
-//   PWM0 (pin 7)  -> Arduino 6  (PA_8)  -> Motor 1 PWM
-//   PWM1 (pin 22) -> Arduino 5  (PC_6)  -> Motor 1 DIR
-//   PWM4 (pin 33) -> Arduino 2  (PJ_11) -> Motor 2 PWM
-//   PWM5 (pin 36) -> Arduino 1  (PK_1)  -> Motor 2 DIR
 
 const int PWM_L = 6;
 const int DIR_L = 5;

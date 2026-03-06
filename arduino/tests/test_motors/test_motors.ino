@@ -39,10 +39,13 @@ const int PWM_R = 2;
 const int DIR_R = 1;
 
 // ---- Encoder Pins (SAME as chassis.cpp) ----
-const int ENC_L_A = PD_4;
-const int ENC_L_B = PG_10;
-const int ENC_R_A = 4;
-const int ENC_R_B = 0;
+// Right Encoder
+mbed::InterruptIn encR_A(PD_4);
+mbed::DigitalIn   encR_B(PG_10);
+
+// Left Encoder (Using standard Arduino pins 4 and 0 via Mbed)
+mbed::InterruptIn encL_A(PC_7);  // Arduino Pin 4 resolves to PC_7 on Portenta
+mbed::DigitalIn   encL_B(PH_15); // Arduino Pin 0 resolves to PH_15 on Portenta
 
 // ---- Constants (SAME as chassis.cpp) ----
 static constexpr int PWM_LIMIT = 191;
@@ -57,17 +60,18 @@ static constexpr float METERS_PER_COUNT = WHEEL_CIRC_M / CPR_WHEEL;
 volatile int32_t ticksL = 0;
 volatile int32_t ticksR = 0;
 
+
 void isrEncL_A()
 {
-    bool a = digitalRead(ENC_L_A);
-    bool b = digitalRead(ENC_L_B);
+    bool a = encL_A.read();
+    bool b = encL_B.read();
     ticksL += (a == b) ? +1 : -1;
 }
 
 void isrEncR_A()
 {
-    bool a = digitalRead(ENC_R_A);
-    bool b = digitalRead(ENC_R_B);
+    bool a = encR_A.read();
+    bool b = encR_B.read();
     ticksR += (a == b) ? +1 : -1;
 }
 
@@ -153,12 +157,17 @@ void setup()
     setMotorPWMDIR(0, 0);
 
     // Encoder pins
-    pinMode(ENC_L_A, INPUT_PULLUP);
-    pinMode(ENC_L_B, INPUT_PULLUP);
-    pinMode(ENC_R_A, INPUT_PULLUP);
-    pinMode(ENC_R_B, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(ENC_L_A), isrEncL_A, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(ENC_R_A), isrEncR_A, CHANGE);
+    encL_A.mode(PullUp);
+    encL_B.mode(PullUp);
+    encR_A.mode(PullUp);
+    encR_B.mode(PullUp);
+
+    // Attach Interupts for both RISE and FALL to mimic Arduino's 'CHANGE'
+    encL_A.rise(&isrEncL_A);
+    encL_A.fall(&isrEncL_A);
+    
+    encR_A.rise(&isrEncR_A);
+    encR_A.fall(&isrEncR_A);
 
     Serial.println("================================================");
     Serial.println("MOTOR TEST");

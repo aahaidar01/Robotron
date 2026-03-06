@@ -23,13 +23,13 @@ int32_t prevTicksL = 0, prevTicksR = 0;
 // ---- Mbed Pin Objects ----
 // Create Interrupt Objects
 // Hat Carrier 40-pin header assignments (matched to comments):
-// Left Encoder
-mbed::InterruptIn encL_A(PD_4);
-mbed::DigitalIn   encL_B(PG_10);
+// Right Encoder
+mbed::InterruptIn encR_A(PD_4);
+mbed::DigitalIn   encR_B(PG_10);
 
-// Right Encoder (Using standard Arduino pins 4 and 0 via Mbed)
-mbed::InterruptIn encR_A(PC_7);  // Arduino Pin 4 resolves to PC_7 on Portenta
-mbed::DigitalIn   encR_B(PH_15); // Arduino Pin 0 resolves to PH_15 on Portenta
+// Left Encoder (Using standard Arduino pins 4 and 0 via Mbed)
+mbed::InterruptIn encL_A(PC_7);  // Arduino Pin 4 resolves to PC_7 on Portenta
+mbed::DigitalIn   encL_B(PH_15); // Arduino Pin 0 resolves to PH_15 on Portenta
 
 // ---- ISRs ----
 void isrEncL_A()
