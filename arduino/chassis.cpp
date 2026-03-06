@@ -19,10 +19,15 @@
 // NOTE: GPIO2 and GPIO6 don't have simple Arduino pin numbers,
 //       so we use mbed pin names for those.
 
-const int ENC_L_A = PD_4;
-const int ENC_L_B = PG_10;
-const int ENC_R_A = 4;
-const int ENC_R_B = 0;
+// ---- Mbed Pin Objects ----
+// Left Encoder
+mbed::InterruptIn encL_A(PD_4);
+mbed::DigitalIn   encL_B(PG_10);
+
+// Right Encoder (Using standard Arduino pins 4 and 0 via Mbed)
+mbed::InterruptIn encR_A(PC_7);  // Arduino Pin 4 resolves to PC_7 on Portenta
+mbed::DigitalIn   encR_B(PH_15); // Arduino Pin 0 resolves to PH_15 on Portenta
+
 
 // ---- Motor Pin Definitions (Arduino pin numbers) ----
 // Hat Carrier 40-pin header mapping:
@@ -133,15 +138,16 @@ int32_t prevTicksL = 0, prevTicksR = 0;
 
 void isrEncL_A()
 {
-    bool a = digitalRead(ENC_L_A);
-    bool b = digitalRead(ENC_L_B);
+    // Mbed .read() returns 1 (HIGH) or 0 (LOW)
+    bool a = encL_A.read();
+    bool b = encL_B.read();
     ticksL += (a == b) ? +1 : -1;
 }
 
 void isrEncR_A()
 {
-    bool a = digitalRead(ENC_R_A);
-    bool b = digitalRead(ENC_R_B);
+    bool a = encR_A.read();
+    bool b = encR_B.read();
     ticksR += (a == b) ? +1 : -1;
 }
 
@@ -178,12 +184,17 @@ float readOmegaZ_IMU()
 
 void init_chassis()
 {
-    pinMode(ENC_L_A, INPUT_PULLUP);
-    pinMode(ENC_L_B, INPUT_PULLUP);
-    pinMode(ENC_R_A, INPUT_PULLUP);
-    pinMode(ENC_R_B, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(ENC_L_A), isrEncL_A, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(ENC_R_A), isrEncR_A, CHANGE);
+    encL_A.mode(PullUp);
+    encL_B.mode(PullUp);
+    encR_A.mode(PullUp);
+    encR_B.mode(PullUp);
+
+    // Attach interrupts for both RISE and FALL to mimic Arduino's 'CHANGE'
+    encL_A.rise(&isrEncL_A);
+    encL_A.fall(&isrEncL_A);
+    
+    encR_A.rise(&isrEncR_A);
+    encR_A.fall(&isrEncR_A);
 
     pinMode(PWM_L, OUTPUT);
     pinMode(DIR_L, OUTPUT);
