@@ -6,7 +6,7 @@
 //   0 = Silent   — only episode start/end messages
 //   1 = Summary  — one compact line per RL step (~5.5Hz)
 //   2 = Detailed — full per-module breakdown each step (for debugging)
-#define LOG_LEVEL 1
+#define LOG_LEVEL 2
 
 // Target location in world frame (change per maze layout)
 const float TARGET_X = 0.0f;

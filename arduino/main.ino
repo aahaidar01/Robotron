@@ -5,8 +5,6 @@
 #include "chassis.h"       // Motors, Odom, Sensor Fusion
 
 
-const int RESET_BUTTON_PIN = 10;
-
 /* ========================================================================
    RL AGENT CONFIGURATION
    ======================================================================== */
@@ -50,21 +48,17 @@ void reset_episode() {
 
 void setup() {
     Serial.begin(115200);
-    
-    // Reset button
-    pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
-    
+
     // Initialize hardware subsystems
     init_hardware();    // Starts Lidar serial and motor
     init_chassis();     // Starts Encoders, I2C IMU, and sets up PID gains
-    
+
     Serial.println("================================================");
-    Serial.println("DAGU RL Agent Initialized.");
-    Serial.println("Press button to start first episode.");
+    Serial.println("DAGU RL Agent Initialized. Auto-starting episode.");
     Serial.println("================================================");
-    
-    // Wait for button press before first episode
-    episode_ended = true;
+
+    // Auto-start single episode (power-cycle to reset)
+    reset_episode();
 }
 
 void loop() {
@@ -72,15 +66,9 @@ void loop() {
     // 1. EPISODE ENDED — Wait for manual reset
     // ====================================================================
     if (episode_ended) {
-        // Keep chassis updated so PID stays at zero cleanly
+        // Keep chassis updated so PID holds motors at zero cleanly.
+        // Robot idles here until power-cycled.
         update_chassis();
-        
-        if (digitalRead(RESET_BUTTON_PIN) == LOW) {
-            delay(50);  // Debounce
-            if (digitalRead(RESET_BUTTON_PIN) == LOW) {  // Confirm still pressed
-                reset_episode();
-            }
-        }
         return;
     }
 
@@ -101,7 +89,7 @@ void loop() {
     if (check_immediate_collision()) {
         execute_motor_command(-1);
         Serial.println("EPISODE ENDED: Collision.");
-        Serial.println("Place robot at start. Press button to restart.");
+        Serial.println("Power-cycle to restart.");
         episode_ended = true;
         return;
     }
@@ -119,7 +107,7 @@ void loop() {
         Serial.print("EPISODE ENDED: SUCCESS! (");
         Serial.print(success_count); Serial.print("/");
         Serial.print(episode_count); Serial.println(")");
-        Serial.println("Place robot at start. Press button to restart.");
+        Serial.println("Power-cycle to restart.");
         episode_ended = true;
         return;
     }
