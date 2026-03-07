@@ -1,0 +1,4 @@
+[console_scripts]
+lidar_debug = robot_simulation.lidar:main
+rl_agent = robot_simulation.rl_agent:main
+

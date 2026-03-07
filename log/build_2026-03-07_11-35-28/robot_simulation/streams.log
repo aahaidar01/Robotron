@@ -1,0 +1,42 @@
+[0.521s] Invoking command in '/home/andria/aml_project_ws/src/Robotron/build/robot_simulation': PYTHONPATH=/home/andria/aml_project_ws/src/Robotron/build/robot_simulation/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/andria/aml_project_ws/src/Robotron/install/robot_simulation/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/build --no-deps symlink_data
+[0.680s] running develop
+[0.770s] running egg_info
+[0.770s] creating robot_simulation.egg-info
+[0.771s] writing robot_simulation.egg-info/PKG-INFO
+[0.771s] writing dependency_links to robot_simulation.egg-info/dependency_links.txt
+[0.771s] writing entry points to robot_simulation.egg-info/entry_points.txt
+[0.771s] writing requirements to robot_simulation.egg-info/requires.txt
+[0.771s] writing top-level names to robot_simulation.egg-info/top_level.txt
+[0.771s] writing manifest file 'robot_simulation.egg-info/SOURCES.txt'
+[0.773s] reading manifest file 'robot_simulation.egg-info/SOURCES.txt'
+[0.773s] writing manifest file 'robot_simulation.egg-info/SOURCES.txt'
+[0.774s] running build_ext
+[0.774s] Creating /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/lib/python3.10/site-packages/robot-simulation.egg-link (link to .)
+[0.775s] Installing lidar_debug script to /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/lib/robot_simulation
+[0.775s] Installing rl_agent script to /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/lib/robot_simulation
+[0.775s] 
+[0.775s] Installed /home/andria/aml_project_ws/src/Robotron/build/robot_simulation
+[0.775s] running symlink_data
+[0.775s] creating /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/ament_index
+[0.776s] creating /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/ament_index/resource_index
+[0.776s] creating /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/ament_index/resource_index/packages
+[0.776s] symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/resource/robot_simulation -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/ament_index/resource_index/packages
+[0.776s] symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/package.xml -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation
+[0.776s] creating /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/launch
+[0.776s] symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/launch/simulation.launch.py -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/launch
+[0.777s] creating /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/urdf
+[0.777s] symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/urdf/my_robot.urdf -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/urdf
+[0.777s] symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/urdf/dagu.urdf -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/urdf
+[0.777s] creating /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/worlds
+[0.777s] symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/worlds/world_backup.world -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/worlds
+[0.777s] symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/worlds/maze_easy.world -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/worlds
+[0.777s] symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/worlds/maze_zig_zag.world -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/worlds
+[0.778s] symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/worlds/my_world.world -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/worlds
+[0.778s] symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/worlds/u_shape.world -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/worlds
+[0.778s] symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/worlds/maze.world -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/worlds
+[0.778s] symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/worlds/maze_simple.world -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/worlds
+[0.778s] creating /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/meshes
+[0.778s] symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/meshes/dagu_chassis_moved_lidar.stl -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/meshes
+[0.779s] symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/meshes/dagu_tire_right.stl -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/meshes
+[0.779s] symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/meshes/dagu_tire_left.stl -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/meshes
+[0.799s] Invoked command in '/home/andria/aml_project_ws/src/Robotron/build/robot_simulation' returned '0': PYTHONPATH=/home/andria/aml_project_ws/src/Robotron/build/robot_simulation/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/andria/aml_project_ws/src/Robotron/install/robot_simulation/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/build --no-deps symlink_data

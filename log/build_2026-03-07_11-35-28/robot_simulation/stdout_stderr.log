@@ -1,0 +1,40 @@
+running develop
+running egg_info
+creating robot_simulation.egg-info
+writing robot_simulation.egg-info/PKG-INFO
+writing dependency_links to robot_simulation.egg-info/dependency_links.txt
+writing entry points to robot_simulation.egg-info/entry_points.txt
+writing requirements to robot_simulation.egg-info/requires.txt
+writing top-level names to robot_simulation.egg-info/top_level.txt
+writing manifest file 'robot_simulation.egg-info/SOURCES.txt'
+reading manifest file 'robot_simulation.egg-info/SOURCES.txt'
+writing manifest file 'robot_simulation.egg-info/SOURCES.txt'
+running build_ext
+Creating /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/lib/python3.10/site-packages/robot-simulation.egg-link (link to .)
+Installing lidar_debug script to /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/lib/robot_simulation
+Installing rl_agent script to /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/lib/robot_simulation
+
+Installed /home/andria/aml_project_ws/src/Robotron/build/robot_simulation
+running symlink_data
+creating /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/ament_index
+creating /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/ament_index/resource_index
+creating /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/ament_index/resource_index/packages
+symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/resource/robot_simulation -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/ament_index/resource_index/packages
+symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/package.xml -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation
+creating /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/launch
+symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/launch/simulation.launch.py -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/launch
+creating /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/urdf
+symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/urdf/my_robot.urdf -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/urdf
+symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/urdf/dagu.urdf -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/urdf
+creating /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/worlds
+symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/worlds/world_backup.world -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/worlds
+symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/worlds/maze_easy.world -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/worlds
+symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/worlds/maze_zig_zag.world -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/worlds
+symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/worlds/my_world.world -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/worlds
+symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/worlds/u_shape.world -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/worlds
+symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/worlds/maze.world -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/worlds
+symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/worlds/maze_simple.world -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/worlds
+creating /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/meshes
+symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/meshes/dagu_chassis_moved_lidar.stl -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/meshes
+symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/meshes/dagu_tire_right.stl -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/meshes
+symbolically linking /home/andria/aml_project_ws/src/Robotron/build/robot_simulation/meshes/dagu_tire_left.stl -> /home/andria/aml_project_ws/src/Robotron/install/robot_simulation/share/robot_simulation/meshes

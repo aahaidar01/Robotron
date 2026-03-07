@@ -13,7 +13,7 @@ def generate_launch_description():
     
     # 1. Path to our custom world and urdf
     world_file = os.path.join(
-        get_package_share_directory(pkg_name), 'worlds', 'maze_zig_zag.world')
+        get_package_share_directory(pkg_name), 'worlds', 'world_backup.world')
     urdf_file = os.path.join(
         get_package_share_directory(pkg_name), 'urdf', 'dagu.urdf')
 
