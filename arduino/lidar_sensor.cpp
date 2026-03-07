@@ -59,7 +59,12 @@ void init_hardware()
 {
   Serial1.begin(BAUD_RATE);
   lidar.begin(Serial1);
-  pinMode(RPLIDAR_MOTOR, OUTPUT);
+
+  // Start motor once and begin scanning
+  analogWrite(RPLIDAR_MOTOR, 255);
+  delay(1000);                 // Wait for motor to reach scan speed
+  lidar.startScan();
+
   reset_sector_minimums();
 }
 
@@ -104,14 +109,8 @@ void update_sensors()
   }
   else
   {
-    // Attempt to restart Lidar if connection drops
-    analogWrite(RPLIDAR_MOTOR, 0);
-    rplidar_response_device_info_t info;
-    if (IS_OK(lidar.getDeviceInfo(info, 100)))
-    {
-      lidar.startScan();
-      analogWrite(RPLIDAR_MOTOR, 255);
-    }
+    // Transient timeout — do nothing, library resyncs naturally.
+    // Motor keeps spinning, scan keeps running.
   }
 }
 
