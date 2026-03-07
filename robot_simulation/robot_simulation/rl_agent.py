@@ -27,7 +27,7 @@ class RLAgent(Node):
         
         # --- SPAWN CONFIGURATION ---
         self.random_spawn_enabled = True  # Toggle: False = fixed spawn, True = curriculum
-        self.fixed_spawn = (-0.5, -2.1, 0.0)  # Default fixed spawn (update per world)
+        self.fixed_spawn = (-0.25, -2.1, 0.0)  # Default fixed spawn (update per world)
         
         # Curriculum spawns: equal random sampling across all difficulty levels.
         # Easy spawns produce quick successes that build Q-values,
