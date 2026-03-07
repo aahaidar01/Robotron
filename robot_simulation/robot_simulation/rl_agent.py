@@ -42,7 +42,7 @@ class RLAgent(Node):
             # Level 2 - Medium: Between Splitter_2 and Splitter_3 (one turn)
             # Robot must navigate RIGHT through Splitter_3 gap, then reach target
             (-0.25, 0.0, 1.57),        # Center of Zone 2, facing north
-            (-0.5, 0.5, 0.0),        # Left side of Zone 2, facing right toward gap
+            (-0.25, 0.5, 0.0),        # Left side of Zone 2, facing right toward gap
             
             # Level 3 - Hard: Between Splitter_1 and Splitter_2 (two turns)
             # Robot must go LEFT through Splitter_2 gap, then RIGHT through Splitter_3
@@ -688,7 +688,7 @@ class RLAgent(Node):
         spawn_info = ""
         if self.current_spawn is not None:
             s = self.spawns[self.current_spawn]
-            spawn_info = f" | Spawn {self.current_spawn} ({s[0]:.1f},{s[1]:.1f})"
+            spawn_info = f" | Spawn {self.current_spawn} ({s[0]:.2f},{s[1]:.1f})"
         
         self.get_logger().info(
             f"Episode {self.episode_num:4d} | "
@@ -740,7 +740,7 @@ class RLAgent(Node):
                 rate = stats['success'] / stats['total'] * 100
                 s = self.spawns[idx]
                 self.get_logger().info(
-                    f"     Spawn {idx} ({s[0]:+.1f},{s[1]:+.1f}): "
+                    f"     Spawn {idx} ({s[0]:+.2f},{s[1]:+.1f}): "
                     f"{rate:5.1f}% success ({stats['success']}/{stats['total']})"
                 )
         
