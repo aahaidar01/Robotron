@@ -189,9 +189,9 @@ void setup()
     runPhase("RL Action 0: FORWARD (both fwd)",
              TEST_PWM, TEST_PWM, 3000);
     runPhase("RL Action 1: LEFT TURN (right faster, left slower)",
-             TEST_PWM / 4, TEST_PWM, 3000);
+             TEST_PWM / 2, TEST_PWM, 3000);
     runPhase("RL Action 2: RIGHT TURN (left faster, right slower)",
-             TEST_PWM, TEST_PWM / 4, 3000);
+             TEST_PWM, TEST_PWM / 2, 3000);
 
     // ---- Done ----
     setMotorPWMDIR(0, 0);

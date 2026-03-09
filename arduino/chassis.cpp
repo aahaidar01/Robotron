@@ -246,7 +246,7 @@ void init_chassis()
     pidSpeed.Kd = 0.0f;
     pidOmega.Kp = 80.0f;
     pidOmega.Ki = 0.0f;
-    pidOmega.Kd = 5.0f;
+    pidOmega.Kd = 0.0f;   // Derivative-on-error causes violent snap on every RL action change
 
     // Initialize command watchdog
     last_command_time_ms = millis();
@@ -256,10 +256,22 @@ void update_chassis()
 {
     static uint32_t lastMs = 0;
     uint32_t now = millis();
+
+    // First call after boot: just set the baseline, don't run PID.
+    // Without this, dt = ~15s (all calibration time) which causes
+    // motor jitter, instant stall detection, and odometry corruption.
+    if (lastMs == 0) {
+        lastMs = now;
+        prevTicksL = ticksL;
+        prevTicksR = ticksR;
+        return;
+    }
+
     if (now - lastMs < CTRL_DT_MS)
         return;
 
     float dt = (float)(now - lastMs) / 1000.0f;
+    if (dt > 0.1f) dt = 0.1f;          // Cap at 100ms — prevents PID/odometry spikes from delayed cycles
     uint32_t elapsed_ms = now - lastMs; // Save BEFORE updating lastMs
     lastMs = now;
 
