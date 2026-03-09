@@ -36,7 +36,7 @@ const int PWM_R = 2;
 const int DIR_R = 1;
 
 
-static constexpr int PWM_LIMIT = 191;
+static constexpr int PWM_LIMIT = 140;
 static constexpr uint32_t CTRL_DT_MS = 20; // 50Hz PID loop
 
 // Geometry & Scaling
@@ -49,16 +49,16 @@ static constexpr float WHEEL_CIRC_M = 3.1415926f * WHEEL_DIAM_M;
 static constexpr float METERS_PER_COUNT = WHEEL_CIRC_M / CPR_WHEEL;
 
 // Fusion Weight
-static constexpr float ALPHA = 0.85f;
+static constexpr float ALPHA = 0.0f; //0.85f;
 
 // RL Agent Target Speeds
 float current_vTarget = 0.0f;
 float current_omegaTarget = 0.0f;
 
 // Base Speeds
-float V_FWD = 0.18f;
-float V_TURN = 0.03f;
-static constexpr float OMEGA_TURN = 0.5f;
+float V_FWD = 0.35f;
+float V_TURN = 0.10f;
+static constexpr float OMEGA_TURN = 1.0f;
 
 // --- Global Odometry Variables ---
 static float odom_x_m = 0.0f;
@@ -171,7 +171,7 @@ void setMotorPWMDIR(int cmdL, int cmdR)
 float readOmegaZ_IMU()
 {
     imu::Vector<3> g = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
-    return g.z();
+    return g.z() * (3.1415926f / 180.0f);
 }
 
 // ================== API FUNCTIONS ==================
@@ -241,11 +241,12 @@ void init_chassis()
     odom_th_rad = SPAWN_YAW;
 
     // Conservative starting PID gains
-    pidSpeed.Kp = 150.0f;
-    pidSpeed.Ki = 40.0f;
+    pidSpeed.Kp = 120.0f;
+    pidSpeed.Ki = 80.0f; //15.0f
     pidSpeed.Kd = 0.0f;
-    pidOmega.Kp = 80.0f;
-    pidOmega.Ki = 0.0f;
+
+    pidOmega.Kp = 50.0f; //35.0f
+    pidOmega.Ki = 20.0f;
     pidOmega.Kd = 0.0f;   // Derivative-on-error causes violent snap on every RL action change
 
     // Initialize command watchdog
@@ -314,7 +315,7 @@ void update_chassis()
     dbg_cmdL = cmdL; dbg_cmdR = cmdR;
 
     // --- SAFETY: Command watchdog ---
-    if (millis() - last_command_time_ms > 500)
+    if (millis() - last_command_time_ms > 2000)
     {
         emergency_stop();
         Serial.println("SAFETY: No command for 500ms. Stopping.");
@@ -353,7 +354,6 @@ void update_chassis()
 void execute_motor_command(int action)
 {
     last_command_time_ms = millis();
-    V_TURN = V_FWD / 6.0f;
 
     if (action == 0)
     { // FWD
