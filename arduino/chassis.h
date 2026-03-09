@@ -21,4 +21,6 @@ void reset_odometry();
 //   level 2: full (encoders, IMU, PID, motor commands)
 void log_chassis_state(int level);
 
+bool is_chassis_stalled();
+
 #endif

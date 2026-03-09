@@ -28,15 +28,12 @@ mbed::DigitalIn   encR_B(PG_10);
 mbed::InterruptIn encL_A(PC_7);  // Arduino Pin 4 resolves to PC_7 on Portenta
 mbed::DigitalIn   encL_B(PH_15); // Arduino Pin 0 resolves to PH_15 on Portenta
 
-
-
 const int PWM_L = 6;
 const int DIR_L = 5;
 const int PWM_R = 2;
 const int DIR_R = 1;
 
-
-static constexpr int PWM_LIMIT = 140;
+static constexpr int PWM_LIMIT = 120;
 static constexpr uint32_t CTRL_DT_MS = 20; // 50Hz PID loop
 
 // Geometry & Scaling
@@ -49,16 +46,16 @@ static constexpr float WHEEL_CIRC_M = 3.1415926f * WHEEL_DIAM_M;
 static constexpr float METERS_PER_COUNT = WHEEL_CIRC_M / CPR_WHEEL;
 
 // Fusion Weight
-static constexpr float ALPHA = 0.0f; //0.85f;
+static constexpr float ALPHA = 0.5f; // IMU and Encoders evenly trusted
 
 // RL Agent Target Speeds
 float current_vTarget = 0.0f;
 float current_omegaTarget = 0.0f;
 
 // Base Speeds
-float V_FWD = 0.35f;
-float V_TURN = 0.10f;
-static constexpr float OMEGA_TURN = 1.0f;
+float V_FWD = 0.18f;
+float V_TURN = 0.03f;
+static constexpr float OMEGA_TURN = 0.5f;
 
 // --- Global Odometry Variables ---
 static float odom_x_m = 0.0f;
@@ -70,6 +67,7 @@ static float yaw_offset_rad = 0.0f;
 static uint32_t stall_timer_ms = 0;
 const uint32_t STALL_TIMEOUT_MS = 800;
 static uint32_t last_command_time_ms = 0;
+bool is_crashed = false; //Tracks terminal state
 
 // --- Debug Snapshot (updated every PID cycle, read by log_chassis_state) ---
 static float dbg_vL = 0, dbg_vR = 0, dbg_vAvg = 0;
@@ -95,6 +93,13 @@ struct PID
 
     float update(float err, float dt)
     {
+        // // --- Error Tolerance (Deadzone) ---
+        // // If the error is tiny, ignore it to prevent micro-jiggling
+        // if (fabs(err) < 0.03f) 
+        // {
+        //     err = 0.0f;
+        // }
+
         // Zero-crossing reset to prevent post-obstruction lunge
         if ((err > 0 && prevErr < 0) || (err < 0 && prevErr > 0))
         {
@@ -240,15 +245,14 @@ void init_chassis()
     odom_y_m = SPAWN_Y;
     odom_th_rad = SPAWN_YAW;
 
-    // Conservative starting PID gains
-    pidSpeed.Kp = 120.0f;
-    pidSpeed.Ki = 80.0f; //15.0f
+    // Heavy Tank PID gains
+    pidSpeed.Kp = 250.0f;  
+    pidSpeed.Ki = 50.0f;
     pidSpeed.Kd = 0.0f;
-
-    pidOmega.Kp = 50.0f; //35.0f
+    
+    pidOmega.Kp = 100.0f;  
     pidOmega.Ki = 20.0f;
-    pidOmega.Kd = 0.0f;   // Derivative-on-error causes violent snap on every RL action change
-
+    pidOmega.Kd = 0.0f;
     // Initialize command watchdog
     last_command_time_ms = millis();
 }
@@ -272,8 +276,8 @@ void update_chassis()
         return;
 
     float dt = (float)(now - lastMs) / 1000.0f;
-    if (dt > 0.1f) dt = 0.1f;          // Cap at 100ms — prevents PID/odometry spikes from delayed cycles
-    uint32_t elapsed_ms = now - lastMs; // Save BEFORE updating lastMs
+    if (dt > 0.1f) dt = 0.1f;          // Cap at 100ms
+    uint32_t elapsed_ms = now - lastMs; 
     lastMs = now;
 
     // 1. Read Encoders
@@ -318,18 +322,19 @@ void update_chassis()
     if (millis() - last_command_time_ms > 2000)
     {
         emergency_stop();
-        Serial.println("SAFETY: No command for 500ms. Stopping.");
+        Serial.println("SAFETY: No command for 2000ms. Stopping.");
         return;
     }
 
     // --- SAFETY: Stall detection ---
     float cmdMag = 0.5f * (abs(cmdL) + abs(cmdR));
-    if (cmdMag > 40 && fabs(vAvg) < 0.02f)
+    if (cmdMag > 65 && fabs(vAvg) < 0.02f)
     {
         stall_timer_ms += elapsed_ms;
         if (stall_timer_ms > STALL_TIMEOUT_MS)
         {
             Serial.println("SAFETY: Motor stall detected! Killing motors.");
+            is_crashed = true;
             emergency_stop();
             return;
         }
@@ -348,12 +353,30 @@ void update_chassis()
         cmdR = (int)lround(cmdR * scale);
     }
 
+    // --- Slew Rate Limiter (Acceleration Ramping) ---
+    static float prev_cmdL = 0.0f;
+    static float prev_cmdR = 0.0f;
+    const float MAX_STEP = 20.0f; // Max PWM change per 20ms tick
+
+    if (cmdL > prev_cmdL + MAX_STEP) cmdL = prev_cmdL + MAX_STEP;
+    else if (cmdL < prev_cmdL - MAX_STEP) cmdL = prev_cmdL - MAX_STEP;
+
+    if (cmdR > prev_cmdR + MAX_STEP) cmdR = prev_cmdR + MAX_STEP;
+    else if (cmdR < prev_cmdR - MAX_STEP) cmdR = prev_cmdR - MAX_STEP;
+
+    prev_cmdL = cmdL;
+    prev_cmdR = cmdR;
+
     setMotorPWMDIR(cmdL, cmdR);
 }
 
 void execute_motor_command(int action)
 {
     last_command_time_ms = millis();
+
+    if (is_crashed) {
+        return; 
+    }
 
     if (action == 0)
     { // FWD
@@ -400,6 +423,10 @@ bool is_target_reached()
     return (dist < TARGET_RADIUS);
 }
 
+bool is_chassis_stalled() {
+    return is_crashed;
+}
+
 void reset_odometry()
 {
     // Reset to spawn position (world frame), not (0,0).
@@ -421,6 +448,7 @@ void reset_odometry()
     pidOmega.reset();
     stall_timer_ms = 0;
     last_command_time_ms = millis();
+    is_crashed = false;
 }
 
 void log_chassis_state(int level)
@@ -429,16 +457,15 @@ void log_chassis_state(int level)
 
     if (level == 1)
     {
-        // Compact: xy(-0.35,-1.80) yaw:0.12 v:0.18 w:0.02
         Serial.print("xy("); Serial.print(odom_x_m, 2);
         Serial.print(",");   Serial.print(odom_y_m, 2);
         Serial.print(") yaw:"); Serial.print(odom_th_rad, 2);
         Serial.print(" v:");  Serial.print(dbg_vAvg, 2);
         Serial.print(" w:");  Serial.print(dbg_omegaFused, 2);
+        Serial.print(" crash:"); Serial.print(is_crashed ? 1 : 0);
     }
     else
     {
-        // Detailed multi-line
         Serial.print("[CHS] pose: ("); Serial.print(odom_x_m, 3);
         Serial.print(", "); Serial.print(odom_y_m, 3);
         Serial.print(") yaw: "); Serial.print(odom_th_rad, 3);
@@ -459,7 +486,9 @@ void log_chassis_state(int level)
         Serial.print(" uW="); Serial.print(dbg_uW, 1);
         Serial.print(" | cmd: L="); Serial.print(dbg_cmdL);
         Serial.print(" R="); Serial.print(dbg_cmdR);
+        Serial.print(" crash:"); Serial.print(is_crashed ? 1 : 0);
         Serial.print(" | stall: "); Serial.println(stall_timer_ms);
+
 
         noInterrupts();
         int32_t tL = ticksL;

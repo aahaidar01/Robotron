@@ -66,10 +66,12 @@ void loop() {
     // 1. EPISODE ENDED — Wait for manual reset
     // ====================================================================
     if (episode_ended) {
-        // Keep chassis updated so PID holds motors at zero cleanly.
-        // Robot idles here until power-cycled.
+        // Continuously send the STOP command. 
+        // This locks the PID at 0 speed AND feeds the chassis watchdog!
+        execute_motor_command(-1); 
         update_chassis();
         return;
+    
     }
 
     // ====================================================================
@@ -86,9 +88,10 @@ void loop() {
     last_step_time = current_time;
 
     // --- COLLISION CHECK ---
-    if (check_immediate_collision()) {
+    // Now ends the episode if the Lidar hits a wall OR the motors stall
+    if (check_immediate_collision() || is_chassis_stalled()) {
         execute_motor_command(-1);
-        Serial.println("EPISODE ENDED: Collision.");
+        Serial.println("EPISODE ENDED: Collision or Motor Stall.");
         Serial.println("Power-cycle to restart.");
         episode_ended = true;
         return;

@@ -48,8 +48,8 @@ def convert_npy_to_h(npy_filepath, h_filepath):
 
 if __name__ == "__main__":
     # Point this to your actual Q-table file
-    input_file = "q_table_latest.npy" 
-    output_file = "q_table.h"
+    input_file = "/Users/alihaidar/Desktop/AML_Exp3/full_maze_5x2_0.6/q_tables/q_table_ep11083.npy" 
+    output_file = "/Users/alihaidar/Desktop/AML_Exp3/full_maze_5x2_0.6/q_table.h"
     
     if os.path.exists(input_file):
         convert_npy_to_h(input_file, output_file)
