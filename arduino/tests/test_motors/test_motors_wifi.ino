@@ -1,5 +1,5 @@
 /*
- * WIFI FEEDFORWARD PWM CALIBRATION TEST
+ * WIFI AP FEEDFORWARD PWM CALIBRATION TEST
  * ==================================
  * Maps PWM values to measured wheel velocities so you can set
  * FF_PWM_FWD, FF_PWM_TURN, and FF_PWM_OMEGA in chassis.cpp.
@@ -10,11 +10,12 @@
  * SAFETY: ELEVATE THE ROBOT — wheels must be OFF the ground!
  *
  * HOW TO USE:
- * 1. Elevate robot
- * 2. Update your Wi-Fi SSID and Password below.
- * 3. Upload to Portenta H7, open USB Serial Monitor to get the IP address.
- * 4. Connect via Telnet (Port 23) to that IP. The test will start automatically. Use PuTTY and select Connection Type: Other: Telnet . Enter IP shown in serial monitor, Port 23
- * 5. Read the tables, update the FF constants below, and re-upload to validate.
+ * 1. Elevate robot.
+ * 2. Upload this script to the Portenta H7.
+ * 3. Connect your computer's Wi-Fi to the "Portenta_Calibration" network.
+ * 4. Open USB Serial Monitor (115200 baud) to double-check the IP address.
+ * 5. Connect via Telnet (Port 23) to that IP. The test will start automatically.
+ * 6. Read the tables, update the FF constants below, and re-upload to validate.
  */
 
 #include "mbed.h"
@@ -22,8 +23,9 @@
 #include <WiFi.h>
 
 // ================== NETWORK CONFIGURATION ==================
-const char* ssid = "traverseML";
-const char* password = "dagu1234";
+// The Portenta will CREATE this network.
+const char* ssid = "Portenta_Calibration";
+const char* password = "traverseML1234"; // Must be at least 8 characters
 WiFiServer server(23); // Telnet server port
 
 // ================== USER CONFIGURATION ==================
@@ -301,7 +303,7 @@ void runMode2(Print& out) {
     out.println();
 }
 
-// ================== MODE 3: TURN PROFILE VALIDATION ==================
+// ================== MODE 3: TURN PROFILE Validation ==================
 void runMode3(Print& out) {
     out.println("========================================");
     out.println("MODE 3: TURN PROFILE VALIDATION");
@@ -379,15 +381,22 @@ void setup() {
     encR_A.rise(&isrEncR_A);
     encR_A.fall(&isrEncR_A);
 
-    // Connect to Wi-Fi
-    Serial.print("Connecting to Wi-Fi");
-    WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
+    // Create Wi-Fi Access Point
+    Serial.println("Creating Access Point...");
+    int status = WiFi.beginAP(ssid, password);
+    if (status != WL_AP_LISTENING) {
+        Serial.println("Creating Access Point failed. Halting.");
+        while (true); // Freeze if it fails
     }
-    Serial.println("\nConnected!");
-    Serial.print("Connect via Telnet to IP: ");
+
+    delay(2000); // Give the AP a moment to stabilize
+    
+    Serial.println("\nAccess Point Created!");
+    Serial.print("Network Name (SSID): ");
+    Serial.println(ssid);
+    Serial.print("Password: ");
+    Serial.println(password);
+    Serial.print("Connect your computer to this Wi-Fi, then Telnet to IP: ");
     Serial.println(WiFi.localIP());
     Serial.println("Port: 23");
 
@@ -400,7 +409,7 @@ void loop() {
     // When a terminal connects, start the sequence
     if (client) {
         client.println("========================================");
-        client.println("WIFI FEEDFORWARD PWM CALIBRATION TEST");
+        client.println("WIFI AP FEEDFORWARD PWM CALIBRATION TEST");
         client.println("!! ELEVATE ROBOT — wheels must be OFF the ground !!");
         client.print("PWM_LIMIT = ");
         client.print(PWM_LIMIT);
