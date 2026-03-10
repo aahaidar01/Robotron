@@ -95,6 +95,7 @@ static float vR_filt = 0.0f;
 static constexpr float VEL_FILTER_ALPHA = 0.3f; // 0.0 = full smoothing, 1.0 = no filter
 
 // --- Debug Snapshot (updated every PID cycle, read by log_chassis_state) ---
+static float dbg_vL_raw = 0, dbg_vR_raw = 0;
 static float dbg_vL = 0, dbg_vR = 0, dbg_vAvg = 0;
 static float dbg_omegaImu = 0, dbg_omegaEnc = 0, dbg_omegaFused = 0;
 static float dbg_trimV = 0, dbg_trimW = 0;
@@ -451,6 +452,8 @@ void update_chassis()
     hold_omega_integrator = mixedLimited || slewLimited;
 
     // --- Store debug snapshot for log_chassis_state() ---
+    dbg_vL_raw = vL_raw;
+    dbg_vR_raw = vR_raw;
     dbg_vL = vL;
     dbg_vR = vR;
     dbg_vAvg = vAvg;
@@ -624,9 +627,13 @@ void log_chassis_state(int level)
 
         Serial.print("[CHS] wheels: vL=");
         Serial.print(dbg_vL, 3);
-        Serial.print(" vR=");
+        Serial.print("(raw:");
+        Serial.print(dbg_vL_raw, 3);
+        Serial.print(") vR=");
         Serial.print(dbg_vR, 3);
-        Serial.print(" vAvg=");
+        Serial.print("(raw:");
+        Serial.print(dbg_vR_raw, 3);
+        Serial.print(") vAvg=");
         Serial.print(dbg_vAvg, 3);
         Serial.print(" | tgt_v=");
         Serial.print(current_vTarget, 3);
