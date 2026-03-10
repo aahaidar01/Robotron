@@ -49,23 +49,8 @@ static constexpr float METERS_PER_COUNT = WHEEL_CIRC_M / CPR_WHEEL;
 static constexpr float ALPHA = 0.5f; // IMU and Encoders evenly trusted
 
 // ================== FEEDFORWARD + PI TRIM ARCHITECTURE ==================
-//
-// Instead of relying on PID alone to discover the right PWM from zero,
-// we use empirically-tuned feedforward PWM values per action. The PID
-// only provides a small trim correction on top.
-//
-// TUNING PROCEDURE (first hardware test):
-//   1. Set FF_PWM_FWD to ~65, run FWD, read actual vAvg from LOG_LEVEL 2
-//   2. Adjust until vAvg ≈ V_FWD (0.18 m/s)
-//   3. Repeat for FF_PWM_TURN with turn actions
-//   4. FF_PWM_OMEGA: run a LEFT turn, read omegaFused, adjust until ≈ OMEGA_TURN
-//
-// WHY THIS IS BETTER:
-//   - Motor gets useful torque from cycle 1 (no deadzone problem)
-//   - PID errors are small from the start (no integral windup)
-//   - No deadzone compensation needed (feedforward is already above stiction)
-//   - Brownout-safe (slew limiter smooths any 0→65 transition)
-//   - PID resets on action change → no stale integral jitter at transitions
+// Feedforward provides the bulk of the motor command. PI only trims around it.
+// This reduces deadzone issues, integral windup, and current spikes vs. pure PID.
 
 // RL Agent Target Speeds (what the sim expects)
 float current_vTarget = 0.0f;
@@ -77,12 +62,9 @@ float V_TURN = 0.03f;
 static constexpr float OMEGA_TURN = 0.5f;
 
 // --- Feedforward PWM values (TUNE THESE ON HARDWARE) ---
-// These are the PWM values that produce approximately the target speeds
-// on flat ground with a charged battery. The PI trim handles the rest.
-static int FF_PWM_FWD   = 65;  // PWM that produces ~V_FWD (0.18 m/s)
-static int FF_PWM_TURN  = 55;  // PWM that produces ~V_TURN (0.03 m/s) during turns
+static int FF_PWM_FWD   = 55;  // PWM that produces ~V_FWD (0.18 m/s)
+static int FF_PWM_TURN  = 40;  // PWM that produces ~V_TURN (0.03 m/s) during turns
 static int FF_PWM_OMEGA = 40;  // Differential PWM that produces ~OMEGA_TURN (0.5 rad/s)
-// NOTE: For STOP action, feedforward is 0 (no base PWM, PID also zeroed).
 
 // Current feedforward base values (set by execute_motor_command)
 static int ff_base_speed = 0;  // Symmetric component (both motors)
@@ -92,7 +74,6 @@ static int ff_base_omega = 0;  // Differential component (left-right split)
 static float odom_x_m = 0.0f;
 static float odom_y_m = 0.0f;
 static float odom_th_rad = 0.0f;
-static float yaw_offset_rad = 0.0f;
 
 // --- Safety Variables ---
 static uint32_t stall_timer_ms = 0;
@@ -103,6 +84,10 @@ bool is_crashed = false; // Tracks terminal state
 // --- Slew Rate Limiter State (file-scope so emergency_stop can reset) ---
 static int prev_cmdL = 0;
 static int prev_cmdR = 0;
+
+// --- Ramp-aware anti-windup state ---
+static bool hold_speed_integrator = false;
+static bool hold_omega_integrator = false;
 
 // --- Velocity Low-Pass Filter State ---
 static float vL_filt = 0.0f;
@@ -132,26 +117,41 @@ struct PID
         prevErr = 0.0f;
     }
 
-    float update(float err, float dt)
+    void setOutputLimits(float minOut, float maxOut)
     {
+        outMin = minOut;
+        outMax = maxOut;
+    }
+
+    float update(float err, float dt, bool allowIntegrate = true)
+    {
+        if (dt <= 1e-6f)
+            return 0.0f;
+
         // Zero-crossing decay — retain some integral memory while damping overshoot.
         if ((err > 0 && prevErr < 0) || (err < 0 && prevErr > 0))
         {
             integ *= 0.3f;
         }
 
-        integ += err * dt;
-        if (Ki > 1e-6f)
-        {
-            float iMax = outMax / Ki;
-            float iMin = outMin / Ki;
-            if (integ > iMax)
-                integ = iMax;
-            if (integ < iMin)
-                integ = iMin;
-        }
         float deriv = (err - prevErr) / dt;
+
+        if (allowIntegrate)
+        {
+            integ += err * dt;
+            if (Ki > 1e-6f)
+            {
+                float iMax = outMax / Ki;
+                float iMin = outMin / Ki;
+                if (integ > iMax)
+                    integ = iMax;
+                if (integ < iMin)
+                    integ = iMin;
+            }
+        }
+
         prevErr = err;
+
         float u = Kp * err + Ki * integ + Kd * deriv;
         if (u > outMax)
             u = outMax;
@@ -195,6 +195,37 @@ static inline float wrapPi(float a)
 }
 
 static inline int clampMag(int mag) { return (mag > PWM_LIMIT) ? PWM_LIMIT : mag; }
+
+static inline int applySlewLimit(int target, int prev)
+{
+    // Softer acceleration from rest / reversals, faster decel for safety.
+    static constexpr int ACCEL_STEP = 15;
+    static constexpr int DECEL_STEP = 30;
+
+    int step = DECEL_STEP;
+
+    if (target == prev)
+        return target;
+
+    if ((prev == 0 && target != 0) || (prev > 0 && target < 0) || (prev < 0 && target > 0))
+    {
+        step = ACCEL_STEP;
+    }
+    else if (abs(target) > abs(prev))
+    {
+        step = ACCEL_STEP;
+    }
+    else
+    {
+        step = DECEL_STEP;
+    }
+
+    if (target > prev + step)
+        return prev + step;
+    if (target < prev - step)
+        return prev - step;
+    return target;
+}
 
 void setMotorPWMDIR(int cmdL, int cmdR)
 {
@@ -282,10 +313,15 @@ void init_chassis()
     pidSpeed.Kp = 60.0f;
     pidSpeed.Ki = 15.0f;
     pidSpeed.Kd = 0.0f;
+    pidSpeed.setOutputLimits(-30.0f, 30.0f);
 
     pidOmega.Kp = 40.0f;
     pidOmega.Ki = 10.0f;
     pidOmega.Kd = 0.0f;
+    pidOmega.setOutputLimits(-25.0f, 25.0f);
+
+    hold_speed_integrator = false;
+    hold_omega_integrator = false;
 
     // Initialize command watchdog
     last_command_time_ms = millis();
@@ -346,26 +382,16 @@ void update_chassis()
     odom_y_m += vAvg * sinf(odom_th_rad) * dt;
 
     // 4. Feedforward + PI Trim Control
-    //
-    // The feedforward (ff_base_speed, ff_base_omega) provides the bulk of the
-    // motor command. The PI trim corrects for battery voltage sag, surface
-    // friction changes, weight distribution asymmetry, etc.
-    //
-    // On action changes, the PID is reset (see execute_motor_command), so
-    // the first cycle after a transition is pure feedforward with zero trim.
-    // This eliminates jitter from stale integral/derivative state.
-    //
-    // cmdL = (ff_speed - ff_omega) + (trim_speed - trim_omega)
-    // cmdR = (ff_speed + ff_omega) + (trim_speed + trim_omega)
-
-    float trimV = pidSpeed.update(current_vTarget - vAvg, dt);
-    float trimW = pidOmega.update(current_omegaTarget - omegaFused, dt);
+    // If the previous cycle hit actuator limits or the slew limiter,
+    // hold the integrators this cycle. This is simple ramp-aware anti-windup.
+    float trimV = pidSpeed.update(current_vTarget - vAvg, dt, !hold_speed_integrator);
+    float trimW = pidOmega.update(current_omegaTarget - omegaFused, dt, !hold_omega_integrator);
 
     int ffL = ff_base_speed - ff_base_omega;
     int ffR = ff_base_speed + ff_base_omega;
 
-    int cmdL = ffL + (int)lround(trimV - trimW);
-    int cmdR = ffR + (int)lround(trimV + trimW);
+    int cmdL_raw = ffL + (int)lround(trimV - trimW);
+    int cmdR_raw = ffR + (int)lround(trimV + trimW);
 
     // --- SAFETY: Command watchdog ---
     if (millis() - last_command_time_ms > 2000)
@@ -378,8 +404,8 @@ void update_chassis()
     // --- SAFETY: Stall detection (per-motor) ---
     // Catches single-side stalls that vAvg averaging would miss.
     bool stalled = false;
-    if (abs(cmdL) > 50 && fabs(vL) < 0.02f) stalled = true;
-    if (abs(cmdR) > 50 && fabs(vR) < 0.02f) stalled = true;
+    if (abs(cmdL_raw) > 50 && fabs(vL) < 0.02f) stalled = true;
+    if (abs(cmdR_raw) > 50 && fabs(vR) < 0.02f) stalled = true;
 
     if (stalled)
     {
@@ -398,32 +424,31 @@ void update_chassis()
     }
 
     // --- Proportional PWM scaling (preserves turn ratio) ---
-    int maxCmd = max(abs(cmdL), abs(cmdR));
+    int cmdL_scaled = cmdL_raw;
+    int cmdR_scaled = cmdR_raw;
+    bool mixedLimited = false;
+
+    int maxCmd = max(abs(cmdL_scaled), abs(cmdR_scaled));
     if (maxCmd > PWM_LIMIT)
     {
         float scale = (float)PWM_LIMIT / (float)maxCmd;
-        cmdL = (int)lround(cmdL * scale);
-        cmdR = (int)lround(cmdR * scale);
+        cmdL_scaled = (int)lround(cmdL_scaled * scale);
+        cmdR_scaled = (int)lround(cmdR_scaled * scale);
+        mixedLimited = true;
     }
 
     // --- Slew Rate Limiter ---
-    // Smooths action transitions (e.g., STOP→FWD ramps 0→65 over ~3 cycles).
-    // MAX_STEP=30 is relaxed vs old pure-PID value (was 20) because
-    // feedforward transitions are smaller and more predictable.
-    const int MAX_STEP = 30;
-
-    if (cmdL > prev_cmdL + MAX_STEP)
-        cmdL = prev_cmdL + MAX_STEP;
-    else if (cmdL < prev_cmdL - MAX_STEP)
-        cmdL = prev_cmdL - MAX_STEP;
-
-    if (cmdR > prev_cmdR + MAX_STEP)
-        cmdR = prev_cmdR + MAX_STEP;
-    else if (cmdR < prev_cmdR - MAX_STEP)
-        cmdR = prev_cmdR - MAX_STEP;
+    // Softer acceleration than deceleration to reduce inrush current and gearbox shock.
+    int cmdL = applySlewLimit(cmdL_scaled, prev_cmdL);
+    int cmdR = applySlewLimit(cmdR_scaled, prev_cmdR);
+    bool slewLimited = (cmdL != cmdL_scaled) || (cmdR != cmdR_scaled);
 
     prev_cmdL = cmdL;
     prev_cmdR = cmdR;
+
+    // --- Ramp-aware anti-windup flags for next cycle ---
+    hold_speed_integrator = mixedLimited || slewLimited;
+    hold_omega_integrator = mixedLimited || slewLimited;
 
     // --- Store debug snapshot for log_chassis_state() ---
     dbg_vL = vL;
@@ -459,6 +484,8 @@ void execute_motor_command(int action)
     {
         pidSpeed.reset();
         pidOmega.reset();
+        hold_speed_integrator = false;
+        hold_omega_integrator = false;
         prev_action = action;
     }
 
@@ -500,6 +527,8 @@ void emergency_stop()
     ff_base_omega = 0;
     pidSpeed.reset();
     pidOmega.reset();
+    hold_speed_integrator = false;
+    hold_omega_integrator = false;
     prev_cmdL = 0;
     prev_cmdR = 0;
     vL_filt = 0.0f;
@@ -528,6 +557,9 @@ bool is_chassis_stalled()
 
 void reset_odometry()
 {
+    // Stop motors immediately so reset never leaves the previous PWM applied.
+    setMotorPWMDIR(0, 0);
+
     // Reset to spawn position (world frame), not (0,0).
     // This ensures target distance/angle calculations match simulation.
     odom_x_m = SPAWN_X;
@@ -545,6 +577,8 @@ void reset_odometry()
 
     pidSpeed.reset();
     pidOmega.reset();
+    hold_speed_integrator = false;
+    hold_omega_integrator = false;
     ff_base_speed = 0;
     ff_base_omega = 0;
     prev_cmdL = 0;
