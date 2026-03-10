@@ -48,14 +48,45 @@ static constexpr float METERS_PER_COUNT = WHEEL_CIRC_M / CPR_WHEEL;
 // Fusion Weight
 static constexpr float ALPHA = 0.5f; // IMU and Encoders evenly trusted
 
-// RL Agent Target Speeds
+// ================== FEEDFORWARD + PI TRIM ARCHITECTURE ==================
+//
+// Instead of relying on PID alone to discover the right PWM from zero,
+// we use empirically-tuned feedforward PWM values per action. The PID
+// only provides a small trim correction on top.
+//
+// TUNING PROCEDURE (first hardware test):
+//   1. Set FF_PWM_FWD to ~65, run FWD, read actual vAvg from LOG_LEVEL 2
+//   2. Adjust until vAvg ≈ V_FWD (0.18 m/s)
+//   3. Repeat for FF_PWM_TURN with turn actions
+//   4. FF_PWM_OMEGA: run a LEFT turn, read omegaFused, adjust until ≈ OMEGA_TURN
+//
+// WHY THIS IS BETTER:
+//   - Motor gets useful torque from cycle 1 (no deadzone problem)
+//   - PID errors are small from the start (no integral windup)
+//   - No deadzone compensation needed (feedforward is already above stiction)
+//   - Brownout-safe (slew limiter smooths any 0→65 transition)
+//   - PID resets on action change → no stale integral jitter at transitions
+
+// RL Agent Target Speeds (what the sim expects)
 float current_vTarget = 0.0f;
 float current_omegaTarget = 0.0f;
 
-// Base Speeds
+// Base Speeds (must match simulation action definitions)
 float V_FWD = 0.18f;
 float V_TURN = 0.03f;
 static constexpr float OMEGA_TURN = 0.5f;
+
+// --- Feedforward PWM values (TUNE THESE ON HARDWARE) ---
+// These are the PWM values that produce approximately the target speeds
+// on flat ground with a charged battery. The PI trim handles the rest.
+static int FF_PWM_FWD   = 65;  // PWM that produces ~V_FWD (0.18 m/s)
+static int FF_PWM_TURN  = 55;  // PWM that produces ~V_TURN (0.03 m/s) during turns
+static int FF_PWM_OMEGA = 40;  // Differential PWM that produces ~OMEGA_TURN (0.5 rad/s)
+// NOTE: For STOP action, feedforward is 0 (no base PWM, PID also zeroed).
+
+// Current feedforward base values (set by execute_motor_command)
+static int ff_base_speed = 0;  // Symmetric component (both motors)
+static int ff_base_omega = 0;  // Differential component (left-right split)
 
 // --- Global Odometry Variables ---
 static float odom_x_m = 0.0f;
@@ -67,13 +98,23 @@ static float yaw_offset_rad = 0.0f;
 static uint32_t stall_timer_ms = 0;
 const uint32_t STALL_TIMEOUT_MS = 800;
 static uint32_t last_command_time_ms = 0;
-bool is_crashed = false; //Tracks terminal state
+bool is_crashed = false; // Tracks terminal state
+
+// --- Slew Rate Limiter State (file-scope so emergency_stop can reset) ---
+static int prev_cmdL = 0;
+static int prev_cmdR = 0;
+
+// --- Velocity Low-Pass Filter State ---
+static float vL_filt = 0.0f;
+static float vR_filt = 0.0f;
+static constexpr float VEL_FILTER_ALPHA = 0.3f; // 0.0 = full smoothing, 1.0 = no filter
 
 // --- Debug Snapshot (updated every PID cycle, read by log_chassis_state) ---
 static float dbg_vL = 0, dbg_vR = 0, dbg_vAvg = 0;
 static float dbg_omegaImu = 0, dbg_omegaEnc = 0, dbg_omegaFused = 0;
-static float dbg_uV = 0, dbg_uW = 0;
+static float dbg_trimV = 0, dbg_trimW = 0;
 static int   dbg_cmdL = 0, dbg_cmdR = 0;
+static int   dbg_ffL = 0, dbg_ffR = 0; // Feedforward component for debugging
 
 // IMU
 Adafruit_BNO055 bno(55, 0x28);
@@ -93,17 +134,10 @@ struct PID
 
     float update(float err, float dt)
     {
-        // // --- Error Tolerance (Deadzone) ---
-        // // If the error is tiny, ignore it to prevent micro-jiggling
-        // if (fabs(err) < 0.03f) 
-        // {
-        //     err = 0.0f;
-        // }
-
-        // Zero-crossing reset to prevent post-obstruction lunge
+        // Zero-crossing decay — retain some integral memory while damping overshoot.
         if ((err > 0 && prevErr < 0) || (err < 0 && prevErr > 0))
         {
-            integ = 0.0f;
+            integ *= 0.3f;
         }
 
         integ += err * dt;
@@ -137,7 +171,6 @@ int32_t prevTicksL = 0, prevTicksR = 0;
 
 void isrEncL_A()
 {
-    // Mbed .read() returns 1 (HIGH) or 0 (LOW)
     bool a = encL_A.read();
     bool b = encL_B.read();
     ticksL += (a == b) ? +1 : -1;
@@ -188,10 +221,9 @@ void init_chassis()
     encR_A.mode(PullUp);
     encR_B.mode(PullUp);
 
-    // Attach interrupts for both RISE and FALL to mimic Arduino's 'CHANGE'
     encL_A.rise(&isrEncL_A);
     encL_A.fall(&isrEncL_A);
-    
+
     encR_A.rise(&isrEncR_A);
     encR_A.fall(&isrEncR_A);
 
@@ -233,7 +265,8 @@ void init_chassis()
     Serial.println(">>> YAW CONVENTION CHECK: Turn robot LEFT (CCW from above).");
     Serial.println(">>> You should see POSITIVE gyro Z values below.");
     Serial.println(">>> If negative, flip the sign in readOmegaZ_IMU().");
-    for (int i = 0; i < 25; i++) {  // 5 seconds of readings
+    for (int i = 0; i < 25; i++)
+    {
         Serial.print("Gyro Z: ");
         Serial.println(readOmegaZ_IMU(), 3);
         delay(200);
@@ -245,14 +278,15 @@ void init_chassis()
     odom_y_m = SPAWN_Y;
     odom_th_rad = SPAWN_YAW;
 
-    // Heavy Tank PID gains
-    pidSpeed.Kp = 250.0f;  
-    pidSpeed.Ki = 50.0f;
+    // --- PI Trim Gains (low — only correcting small ff errors) ---
+    pidSpeed.Kp = 60.0f;
+    pidSpeed.Ki = 15.0f;
     pidSpeed.Kd = 0.0f;
-    
-    pidOmega.Kp = 100.0f;  
-    pidOmega.Ki = 20.0f;
+
+    pidOmega.Kp = 40.0f;
+    pidOmega.Ki = 10.0f;
     pidOmega.Kd = 0.0f;
+
     // Initialize command watchdog
     last_command_time_ms = millis();
 }
@@ -265,7 +299,8 @@ void update_chassis()
     // First call after boot: just set the baseline, don't run PID.
     // Without this, dt = ~15s (all calibration time) which causes
     // motor jitter, instant stall detection, and odometry corruption.
-    if (lastMs == 0) {
+    if (lastMs == 0)
+    {
         lastMs = now;
         prevTicksL = ticksL;
         prevTicksR = ticksR;
@@ -276,8 +311,9 @@ void update_chassis()
         return;
 
     float dt = (float)(now - lastMs) / 1000.0f;
-    if (dt > 0.1f) dt = 0.1f;          // Cap at 100ms
-    uint32_t elapsed_ms = now - lastMs; 
+    if (dt > 0.1f)
+        dt = 0.1f; // Cap at 100ms
+    uint32_t elapsed_ms = now - lastMs;
     lastMs = now;
 
     // 1. Read Encoders
@@ -291,8 +327,12 @@ void update_chassis()
     prevTicksL = tL;
     prevTicksR = tR;
 
-    float vL = (dL * METERS_PER_COUNT) / dt;
-    float vR = (dR * METERS_PER_COUNT) / dt;
+    float vL_raw = (dL * METERS_PER_COUNT) / dt;
+    float vR_raw = (dR * METERS_PER_COUNT) / dt;
+    vL_filt = VEL_FILTER_ALPHA * vL_raw + (1.0f - VEL_FILTER_ALPHA) * vL_filt;
+    vR_filt = VEL_FILTER_ALPHA * vR_raw + (1.0f - VEL_FILTER_ALPHA) * vR_filt;
+    float vL = vL_filt;
+    float vR = vR_filt;
     float vAvg = 0.5f * (vL + vR);
 
     // 2. Sensor Fusion for Turn Rate
@@ -305,18 +345,27 @@ void update_chassis()
     odom_x_m += vAvg * cosf(odom_th_rad) * dt;
     odom_y_m += vAvg * sinf(odom_th_rad) * dt;
 
-    // 4. PID Control
-    float uV = pidSpeed.update(current_vTarget - vAvg, dt);
-    float uW = pidOmega.update(current_omegaTarget - omegaFused, dt);
+    // 4. Feedforward + PI Trim Control
+    //
+    // The feedforward (ff_base_speed, ff_base_omega) provides the bulk of the
+    // motor command. The PI trim corrects for battery voltage sag, surface
+    // friction changes, weight distribution asymmetry, etc.
+    //
+    // On action changes, the PID is reset (see execute_motor_command), so
+    // the first cycle after a transition is pure feedforward with zero trim.
+    // This eliminates jitter from stale integral/derivative state.
+    //
+    // cmdL = (ff_speed - ff_omega) + (trim_speed - trim_omega)
+    // cmdR = (ff_speed + ff_omega) + (trim_speed + trim_omega)
 
-    int cmdL = (int)lround(uV - uW);
-    int cmdR = (int)lround(uV + uW);
+    float trimV = pidSpeed.update(current_vTarget - vAvg, dt);
+    float trimW = pidOmega.update(current_omegaTarget - omegaFused, dt);
 
-    // --- Store debug snapshot for log_chassis_state() ---
-    dbg_vL = vL; dbg_vR = vR; dbg_vAvg = vAvg;
-    dbg_omegaImu = omegaImu; dbg_omegaEnc = omegaEnc; dbg_omegaFused = omegaFused;
-    dbg_uV = uV; dbg_uW = uW;
-    dbg_cmdL = cmdL; dbg_cmdR = cmdR;
+    int ffL = ff_base_speed - ff_base_omega;
+    int ffR = ff_base_speed + ff_base_omega;
+
+    int cmdL = ffL + (int)lround(trimV - trimW);
+    int cmdR = ffR + (int)lround(trimV + trimW);
 
     // --- SAFETY: Command watchdog ---
     if (millis() - last_command_time_ms > 2000)
@@ -326,9 +375,13 @@ void update_chassis()
         return;
     }
 
-    // --- SAFETY: Stall detection ---
-    float cmdMag = 0.5f * (abs(cmdL) + abs(cmdR));
-    if (cmdMag > 65 && fabs(vAvg) < 0.02f)
+    // --- SAFETY: Stall detection (per-motor) ---
+    // Catches single-side stalls that vAvg averaging would miss.
+    bool stalled = false;
+    if (abs(cmdL) > 50 && fabs(vL) < 0.02f) stalled = true;
+    if (abs(cmdR) > 50 && fabs(vR) < 0.02f) stalled = true;
+
+    if (stalled)
     {
         stall_timer_ms += elapsed_ms;
         if (stall_timer_ms > STALL_TIMEOUT_MS)
@@ -353,19 +406,38 @@ void update_chassis()
         cmdR = (int)lround(cmdR * scale);
     }
 
-    // --- Slew Rate Limiter (Acceleration Ramping) ---
-    static float prev_cmdL = 0.0f;
-    static float prev_cmdR = 0.0f;
-    const float MAX_STEP = 20.0f; // Max PWM change per 20ms tick
+    // --- Slew Rate Limiter ---
+    // Smooths action transitions (e.g., STOP→FWD ramps 0→65 over ~3 cycles).
+    // MAX_STEP=30 is relaxed vs old pure-PID value (was 20) because
+    // feedforward transitions are smaller and more predictable.
+    const int MAX_STEP = 30;
 
-    if (cmdL > prev_cmdL + MAX_STEP) cmdL = prev_cmdL + MAX_STEP;
-    else if (cmdL < prev_cmdL - MAX_STEP) cmdL = prev_cmdL - MAX_STEP;
+    if (cmdL > prev_cmdL + MAX_STEP)
+        cmdL = prev_cmdL + MAX_STEP;
+    else if (cmdL < prev_cmdL - MAX_STEP)
+        cmdL = prev_cmdL - MAX_STEP;
 
-    if (cmdR > prev_cmdR + MAX_STEP) cmdR = prev_cmdR + MAX_STEP;
-    else if (cmdR < prev_cmdR - MAX_STEP) cmdR = prev_cmdR - MAX_STEP;
+    if (cmdR > prev_cmdR + MAX_STEP)
+        cmdR = prev_cmdR + MAX_STEP;
+    else if (cmdR < prev_cmdR - MAX_STEP)
+        cmdR = prev_cmdR - MAX_STEP;
 
     prev_cmdL = cmdL;
     prev_cmdR = cmdR;
+
+    // --- Store debug snapshot for log_chassis_state() ---
+    dbg_vL = vL;
+    dbg_vR = vR;
+    dbg_vAvg = vAvg;
+    dbg_omegaImu = omegaImu;
+    dbg_omegaEnc = omegaEnc;
+    dbg_omegaFused = omegaFused;
+    dbg_trimV = trimV;
+    dbg_trimW = trimW;
+    dbg_cmdL = cmdL;
+    dbg_cmdR = cmdR;
+    dbg_ffL = ffL;
+    dbg_ffR = ffR;
 
     setMotorPWMDIR(cmdL, cmdR);
 }
@@ -374,29 +446,49 @@ void execute_motor_command(int action)
 {
     last_command_time_ms = millis();
 
-    if (is_crashed) {
-        return; 
+    if (is_crashed)
+    {
+        return;
+    }
+
+    // Reset PI trim on action change — prevents stale integral
+    // and derivative kick from causing jitter at transitions.
+    // First PID cycle after change produces trim=0 (pure feedforward).
+    static int prev_action = -1;
+    if (action != prev_action)
+    {
+        pidSpeed.reset();
+        pidOmega.reset();
+        prev_action = action;
     }
 
     if (action == 0)
     { // FWD
         current_vTarget = V_FWD;
         current_omegaTarget = 0.0f;
+        ff_base_speed = FF_PWM_FWD;
+        ff_base_omega = 0;
     }
     else if (action == 1)
-    { // LEFT
+    { // LEFT (positive omega = CCW)
         current_vTarget = V_TURN;
         current_omegaTarget = OMEGA_TURN;
+        ff_base_speed = FF_PWM_TURN;
+        ff_base_omega = FF_PWM_OMEGA;
     }
     else if (action == 2)
-    { // RIGHT
+    { // RIGHT (negative omega = CW)
         current_vTarget = V_TURN;
         current_omegaTarget = -OMEGA_TURN;
+        ff_base_speed = FF_PWM_TURN;
+        ff_base_omega = -FF_PWM_OMEGA;
     }
     else if (action == -1)
     { // STOP
         current_vTarget = 0.0f;
         current_omegaTarget = 0.0f;
+        ff_base_speed = 0;
+        ff_base_omega = 0;
     }
 }
 
@@ -404,8 +496,14 @@ void emergency_stop()
 {
     current_vTarget = 0.0f;
     current_omegaTarget = 0.0f;
+    ff_base_speed = 0;
+    ff_base_omega = 0;
     pidSpeed.reset();
     pidOmega.reset();
+    prev_cmdL = 0;
+    prev_cmdR = 0;
+    vL_filt = 0.0f;
+    vR_filt = 0.0f;
     setMotorPWMDIR(0, 0);
     stall_timer_ms = 0;
 }
@@ -423,7 +521,8 @@ bool is_target_reached()
     return (dist < TARGET_RADIUS);
 }
 
-bool is_chassis_stalled() {
+bool is_chassis_stalled()
+{
     return is_crashed;
 }
 
@@ -446,6 +545,12 @@ void reset_odometry()
 
     pidSpeed.reset();
     pidOmega.reset();
+    ff_base_speed = 0;
+    ff_base_omega = 0;
+    prev_cmdL = 0;
+    prev_cmdR = 0;
+    vL_filt = 0.0f;
+    vR_filt = 0.0f;
     stall_timer_ms = 0;
     last_command_time_ms = millis();
     is_crashed = false;
@@ -453,48 +558,79 @@ void reset_odometry()
 
 void log_chassis_state(int level)
 {
-    if (level <= 0) return;
+    if (level <= 0)
+        return;
 
     if (level == 1)
     {
-        Serial.print("xy("); Serial.print(odom_x_m, 2);
-        Serial.print(",");   Serial.print(odom_y_m, 2);
-        Serial.print(") yaw:"); Serial.print(odom_th_rad, 2);
-        Serial.print(" v:");  Serial.print(dbg_vAvg, 2);
-        Serial.print(" w:");  Serial.print(dbg_omegaFused, 2);
-        Serial.print(" crash:"); Serial.print(is_crashed ? 1 : 0);
+        Serial.print("xy(");
+        Serial.print(odom_x_m, 2);
+        Serial.print(",");
+        Serial.print(odom_y_m, 2);
+        Serial.print(") yaw:");
+        Serial.print(odom_th_rad, 2);
+        Serial.print(" v:");
+        Serial.print(dbg_vAvg, 2);
+        Serial.print(" w:");
+        Serial.print(dbg_omegaFused, 2);
+        Serial.print(" crash:");
+        Serial.print(is_crashed ? 1 : 0);
     }
     else
     {
-        Serial.print("[CHS] pose: ("); Serial.print(odom_x_m, 3);
-        Serial.print(", "); Serial.print(odom_y_m, 3);
-        Serial.print(") yaw: "); Serial.print(odom_th_rad, 3);
-        Serial.print(" rad ("); Serial.print(odom_th_rad * 180.0f / 3.1415926f, 1);
+        Serial.print("[CHS] pose: (");
+        Serial.print(odom_x_m, 3);
+        Serial.print(", ");
+        Serial.print(odom_y_m, 3);
+        Serial.print(") yaw: ");
+        Serial.print(odom_th_rad, 3);
+        Serial.print(" rad (");
+        Serial.print(odom_th_rad * 180.0f / 3.1415926f, 1);
         Serial.println(" deg)");
 
-        Serial.print("[CHS] wheels: vL="); Serial.print(dbg_vL, 3);
-        Serial.print(" vR="); Serial.print(dbg_vR, 3);
-        Serial.print(" vAvg="); Serial.print(dbg_vAvg, 3);
-        Serial.print(" | tgt_v="); Serial.print(current_vTarget, 3);
-        Serial.print(" tgt_w="); Serial.println(current_omegaTarget, 3);
+        Serial.print("[CHS] wheels: vL=");
+        Serial.print(dbg_vL, 3);
+        Serial.print(" vR=");
+        Serial.print(dbg_vR, 3);
+        Serial.print(" vAvg=");
+        Serial.print(dbg_vAvg, 3);
+        Serial.print(" | tgt_v=");
+        Serial.print(current_vTarget, 3);
+        Serial.print(" tgt_w=");
+        Serial.println(current_omegaTarget, 3);
 
-        Serial.print("[CHS] omega: imu="); Serial.print(dbg_omegaImu, 3);
-        Serial.print(" enc="); Serial.print(dbg_omegaEnc, 3);
-        Serial.print(" fused="); Serial.println(dbg_omegaFused, 3);
+        Serial.print("[CHS] omega: imu=");
+        Serial.print(dbg_omegaImu, 3);
+        Serial.print(" enc=");
+        Serial.print(dbg_omegaEnc, 3);
+        Serial.print(" fused=");
+        Serial.println(dbg_omegaFused, 3);
 
-        Serial.print("[CHS] pid: uV="); Serial.print(dbg_uV, 1);
-        Serial.print(" uW="); Serial.print(dbg_uW, 1);
-        Serial.print(" | cmd: L="); Serial.print(dbg_cmdL);
-        Serial.print(" R="); Serial.print(dbg_cmdR);
-        Serial.print(" crash:"); Serial.print(is_crashed ? 1 : 0);
-        Serial.print(" | stall: "); Serial.println(stall_timer_ms);
+        Serial.print("[CHS] ff: L=");
+        Serial.print(dbg_ffL);
+        Serial.print(" R=");
+        Serial.print(dbg_ffR);
+        Serial.print(" | trim: V=");
+        Serial.print(dbg_trimV, 1);
+        Serial.print(" W=");
+        Serial.println(dbg_trimW, 1);
 
+        Serial.print("[CHS] final cmd: L=");
+        Serial.print(dbg_cmdL);
+        Serial.print(" R=");
+        Serial.print(dbg_cmdR);
+        Serial.print(" crash:");
+        Serial.print(is_crashed ? 1 : 0);
+        Serial.print(" | stall: ");
+        Serial.println(stall_timer_ms);
 
         noInterrupts();
         int32_t tL = ticksL;
         int32_t tR = ticksR;
         interrupts();
-        Serial.print("[CHS] ticks: L="); Serial.print(tL);
-        Serial.print(" R="); Serial.println(tR);
+        Serial.print("[CHS] ticks: L=");
+        Serial.print(tL);
+        Serial.print(" R=");
+        Serial.println(tR);
     }
 }
