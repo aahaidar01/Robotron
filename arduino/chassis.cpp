@@ -46,7 +46,7 @@ static constexpr float WHEEL_CIRC_M = 3.1415926f * WHEEL_DIAM_M;
 static constexpr float METERS_PER_COUNT = WHEEL_CIRC_M / CPR_WHEEL;
 
 // Fusion Weight
-static constexpr float ALPHA = 0.5f; // IMU and Encoders evenly trusted
+static constexpr float ALPHA = 0.0f; // IMU and Encoders evenly trusted
 
 // ================== FEEDFORWARD + PI TRIM ARCHITECTURE ==================
 // Feedforward provides the bulk of the motor command. PI only trims around it.
@@ -62,9 +62,9 @@ float V_TURN = 0.03f;
 static constexpr float OMEGA_TURN = 0.5f;
 
 // --- Feedforward PWM values (TUNE THESE ON HARDWARE) ---
-static int FF_PWM_FWD   = 55;  // PWM that produces ~V_FWD (0.18 m/s)
-static int FF_PWM_TURN  = 40;  // PWM that produces ~V_TURN (0.03 m/s) during turns
-static int FF_PWM_OMEGA = 40;  // Differential PWM that produces ~OMEGA_TURN (0.5 rad/s)
+static int FF_PWM_FWD   = 70;  // PWM that produces ~V_FWD (0.18 m/s)
+static int FF_PWM_TURN  = 0;  // PWM that produces ~V_TURN (0.03 m/s) during turns
+static int FF_PWM_OMEGA = 70;  // Differential PWM that produces ~OMEGA_TURN (0.5 rad/s)
 
 // Current feedforward base values (set by execute_motor_command)
 static int ff_base_speed = 0;  // Symmetric component (both motors)
@@ -77,7 +77,7 @@ static float odom_th_rad = 0.0f;
 
 // --- Safety Variables ---
 static uint32_t stall_timer_ms = 0;
-const uint32_t STALL_TIMEOUT_MS = 800;
+const uint32_t STALL_TIMEOUT_MS = 3000;
 static uint32_t last_command_time_ms = 0;
 bool is_crashed = false; // Tracks terminal state
 
@@ -246,6 +246,15 @@ float readOmegaZ_IMU()
 
 // ================== API FUNCTIONS ==================
 
+void lockdown_motors()
+{
+    pinMode(PWM_L, OUTPUT);
+    pinMode(DIR_L, OUTPUT);
+    pinMode(PWM_R, OUTPUT);
+    pinMode(DIR_R, OUTPUT);
+    setMotorPWMDIR(0, 0);
+}
+
 void init_chassis()
 {
     encL_A.mode(PullUp);
@@ -268,13 +277,13 @@ void init_chassis()
     Wire.begin();
     if (!bno.begin())
     {
-        Serial.println("ERROR: BNO055 not detected.");
+        logOut->println("ERROR: BNO055 not detected.");
         while (1)
             delay(10);
     }
     bno.setExtCrystalUse(true);
 
-    Serial.println("Calibrating IMU Gyroscope... DO NOT MOVE ROBOT.");
+    logOut->println("Calibrating IMU Gyroscope... DO NOT MOVE ROBOT.");
 
     uint8_t system, gyro, accel, mag;
     system = gyro = accel = mag = 0;
@@ -282,28 +291,28 @@ void init_chassis()
     while (gyro < 3)
     {
         bno.getCalibration(&system, &gyro, &accel, &mag);
-        Serial.print("Calibration Scores - Sys: ");
-        Serial.print(system);
-        Serial.print(" G: ");
-        Serial.print(gyro);
-        Serial.print(" A: ");
-        Serial.print(accel);
-        Serial.print(" M: ");
-        Serial.println(mag);
+        logOut->print("Calibration Scores - Sys: ");
+        logOut->print(system);
+        logOut->print(" G: ");
+        logOut->print(gyro);
+        logOut->print(" A: ");
+        logOut->print(accel);
+        logOut->print(" M: ");
+        logOut->println(mag);
         delay(200);
     }
 
-    Serial.println("IMU Gyro Fully Calibrated!");
-    Serial.println(">>> YAW CONVENTION CHECK: Turn robot LEFT (CCW from above).");
-    Serial.println(">>> You should see POSITIVE gyro Z values below.");
-    Serial.println(">>> If negative, flip the sign in readOmegaZ_IMU().");
+    logOut->println("IMU Gyro Fully Calibrated!");
+    logOut->println(">>> YAW CONVENTION CHECK: Turn robot LEFT (CCW from above).");
+    logOut->println(">>> You should see POSITIVE gyro Z values below.");
+    logOut->println(">>> If negative, flip the sign in readOmegaZ_IMU().");
     for (int i = 0; i < 25; i++)
     {
-        Serial.print("Gyro Z: ");
-        Serial.println(readOmegaZ_IMU(), 3);
+        logOut->print("Gyro Z: ");
+        logOut->println(readOmegaZ_IMU(), 3);
         delay(200);
     }
-    Serial.println(">>> End of yaw check. Safe to start.");
+    logOut->println(">>> End of yaw check. Safe to start.");
 
     // Reset odometry to spawn position (world frame, matching simulation)
     odom_x_m = SPAWN_X;
@@ -398,7 +407,7 @@ void update_chassis()
     if (millis() - last_command_time_ms > 2000)
     {
         emergency_stop();
-        Serial.println("SAFETY: No command for 2000ms. Stopping.");
+        logOut->println("SAFETY: No command for 2000ms. Stopping.");
         return;
     }
 
@@ -413,7 +422,7 @@ void update_chassis()
         stall_timer_ms += elapsed_ms;
         if (stall_timer_ms > STALL_TIMEOUT_MS)
         {
-            Serial.println("SAFETY: Motor stall detected! Killing motors.");
+            logOut->println("SAFETY: Motor stall detected! Killing motors.");
             is_crashed = true;
             emergency_stop();
             return;
@@ -440,9 +449,13 @@ void update_chassis()
 
     // --- Slew Rate Limiter ---
     // Softer acceleration than deceleration to reduce inrush current and gearbox shock.
-    int cmdL = applySlewLimit(cmdL_scaled, prev_cmdL);
-    int cmdR = applySlewLimit(cmdR_scaled, prev_cmdR);
-    bool slewLimited = (cmdL != cmdL_scaled) || (cmdR != cmdR_scaled);
+    // int cmdL = applySlewLimit(cmdL_scaled, prev_cmdL);
+    // int cmdR = applySlewLimit(cmdR_scaled, prev_cmdR);
+    // bool slewLimited = (cmdL != cmdL_scaled) || (cmdR != cmdR_scaled);
+
+    int cmdL = cmdL_scaled;
+    int cmdR = cmdR_scaled;
+    bool slewLimited = false;
 
     prev_cmdL = cmdL;
     prev_cmdR = cmdR;
@@ -600,78 +613,79 @@ void log_chassis_state(int level)
 
     if (level == 1)
     {
-        Serial.print("xy(");
-        Serial.print(odom_x_m, 2);
-        Serial.print(",");
-        Serial.print(odom_y_m, 2);
-        Serial.print(") yaw:");
-        Serial.print(odom_th_rad, 2);
-        Serial.print(" v:");
-        Serial.print(dbg_vAvg, 2);
-        Serial.print(" w:");
-        Serial.print(dbg_omegaFused, 2);
-        Serial.print(" crash:");
-        Serial.print(is_crashed ? 1 : 0);
+        logOut->print("xy(");
+        logOut->print(odom_x_m, 2);
+        logOut->print(",");
+        logOut->print(odom_y_m, 2);
+        logOut->print(") yaw:");
+        logOut->print(odom_th_rad, 2);
+        logOut->print(" v:");
+        logOut->print(dbg_vAvg, 2);
+        logOut->print(" w:");
+        logOut->print(dbg_omegaFused, 2);
+        logOut->print(" crash:");
+        logOut->print(is_crashed ? 1 : 0);
     }
     else
     {
-        Serial.print("[CHS] pose: (");
-        Serial.print(odom_x_m, 3);
-        Serial.print(", ");
-        Serial.print(odom_y_m, 3);
-        Serial.print(") yaw: ");
-        Serial.print(odom_th_rad, 3);
-        Serial.print(" rad (");
-        Serial.print(odom_th_rad * 180.0f / 3.1415926f, 1);
-        Serial.println(" deg)");
+        logOut->print("[CHS] pose: (");
+        logOut->print(odom_x_m, 3);
+        logOut->print(", ");
+        logOut->print(odom_y_m, 3);
+        logOut->print(") yaw: ");
+        logOut->print(odom_th_rad, 3);
+        logOut->print(" rad (");
+        logOut->print(odom_th_rad * 180.0f / 3.1415926f, 1);
+        logOut->println(" deg)");
 
-        Serial.print("[CHS] wheels: vL=");
-        Serial.print(dbg_vL, 3);
-        Serial.print("(raw:");
-        Serial.print(dbg_vL_raw, 3);
-        Serial.print(") vR=");
-        Serial.print(dbg_vR, 3);
-        Serial.print("(raw:");
-        Serial.print(dbg_vR_raw, 3);
-        Serial.print(") vAvg=");
-        Serial.print(dbg_vAvg, 3);
-        Serial.print(" | tgt_v=");
-        Serial.print(current_vTarget, 3);
-        Serial.print(" tgt_w=");
-        Serial.println(current_omegaTarget, 3);
+        logOut->print("[CHS] wheels: vL=");
+        logOut->print(dbg_vL, 3);
+        logOut->print("(raw:");
+        logOut->print(dbg_vL_raw, 3);
+        logOut->print(") vR=");
+        logOut->print(dbg_vR, 3);
+        logOut->print("(raw:");
+        logOut->print(dbg_vR_raw, 3);
+        logOut->print(") vAvg=");
+        logOut->print(dbg_vAvg, 3);
+        logOut->print(" | tgt_v=");
+        logOut->print(current_vTarget, 3);
+        logOut->print(" tgt_w=");
+        logOut->println(current_omegaTarget, 3);
 
-        Serial.print("[CHS] omega: imu=");
-        Serial.print(dbg_omegaImu, 3);
-        Serial.print(" enc=");
-        Serial.print(dbg_omegaEnc, 3);
-        Serial.print(" fused=");
-        Serial.println(dbg_omegaFused, 3);
+        logOut->print("[CHS] omega: imu=");
+        logOut->print(dbg_omegaImu, 3);
+        logOut->print(" enc=");
+        logOut->print(dbg_omegaEnc, 3);
+        logOut->print(" fused=");
+        logOut->println(dbg_omegaFused, 3);
 
-        Serial.print("[CHS] ff: L=");
-        Serial.print(dbg_ffL);
-        Serial.print(" R=");
-        Serial.print(dbg_ffR);
-        Serial.print(" | trim: V=");
-        Serial.print(dbg_trimV, 1);
-        Serial.print(" W=");
-        Serial.println(dbg_trimW, 1);
+        logOut->print("[CHS] ff: L=");
+        logOut->print(dbg_ffL);
+        logOut->print(" R=");
+        logOut->print(dbg_ffR);
+        logOut->print(" | trim: V=");
+        logOut->print(dbg_trimV, 1);
+        logOut->print(" W=");
+        logOut->println(dbg_trimW, 1);
 
-        Serial.print("[CHS] final cmd: L=");
-        Serial.print(dbg_cmdL);
-        Serial.print(" R=");
-        Serial.print(dbg_cmdR);
-        Serial.print(" crash:");
-        Serial.print(is_crashed ? 1 : 0);
-        Serial.print(" | stall: ");
-        Serial.println(stall_timer_ms);
+        logOut->print("[CHS] final cmd: L=");
+        logOut->print(dbg_cmdL);
+        logOut->print(" R=");
+        logOut->print(dbg_cmdR);
+        logOut->print(" crash:");
+        logOut->print(is_crashed ? 1 : 0);
+        logOut->print(" | stall: ");
+        logOut->println(stall_timer_ms);
 
         noInterrupts();
         int32_t tL = ticksL;
         int32_t tR = ticksR;
         interrupts();
-        Serial.print("[CHS] ticks: L=");
-        Serial.print(tL);
-        Serial.print(" R=");
-        Serial.println(tR);
+        logOut->print("[CHS] ticks: L=");
+        logOut->print(tL);
+        logOut->print(" R=");
+        logOut->println(tR);
     }
 }
+

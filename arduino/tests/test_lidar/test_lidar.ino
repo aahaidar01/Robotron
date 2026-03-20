@@ -119,6 +119,7 @@ void setup()
 
 void loop()
 {
+    
     if (IS_OK(lidar.waitPoint()))
     {
         float distance = lidar.getCurrentPoint().distance;

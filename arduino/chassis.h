@@ -1,6 +1,7 @@
 #ifndef CHASSIS_H
 #define CHASSIS_H
 
+void lockdown_motors();  // Kills motors immediately (call before full init)
 void init_chassis();
 void update_chassis(); // Runs the 50Hz PID loop
 

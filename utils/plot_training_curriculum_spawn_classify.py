@@ -223,7 +223,7 @@ def plot_actions(metrics, metadata, output_dir, base_name, window):
     ax.set_title('Action Distribution (Rolling Avg)' + title_suffix)
     ax.legend(loc='upper right')
     ax.grid(True, alpha=0.3)
-    ax.set_ylim(0, 60)
+    ax.set_ylim(0, 90)
     plt.tight_layout()
     fig.savefig(output_dir / f'{base_name}_5_actions.png', dpi=150, bbox_inches='tight')
     print(f"  Saved: {base_name}_5_actions.png")
@@ -332,6 +332,66 @@ def plot_spawn_bars(df, spawn_info, metadata, output_dir, base_name):
     print(f"  Saved: {base_name}_8_spawn_bars.png")
     plt.close(fig)
 
+
+def plot_spawn_bars_last_n(df, spawn_info, metadata, output_dir, base_name, n=500):
+    """Per-spawn success vs collision bar chart for the LAST n episodes only."""
+    last_df = df.tail(n)
+    actual_n = len(last_df)
+
+    fig, ax = plt.subplots(figsize=(max(12, len(spawn_info) * 1.5), 6))
+    title_suffix = '\n' + metadata.get('hyperparams', '')
+
+    spawn_ids = sorted(spawn_info.keys())
+    labels = []
+    success_rates = []
+    collision_rates = []
+    bar_colors = []
+
+    for idx in spawn_ids:
+        group = last_df[last_df['SpawnIdx'] == idx]
+        n_eps = len(group)
+        s = group['Success'].sum()
+        c = group['Collision'].sum()
+        info = spawn_info[idx]
+        success_rates.append(s / n_eps * 100 if n_eps > 0 else 0)
+        collision_rates.append(c / n_eps * 100 if n_eps > 0 else 0)
+        labels.append(f"S{idx} {info['label']}\n{info['level']} ({n_eps} eps)")
+        bar_colors.append(LEVEL_COLORS.get(info['level'], 'gray'))
+
+    x = np.arange(len(labels))
+    w = 0.35
+
+    bars_s = ax.bar(x - w / 2, success_rates, w, color=bar_colors, edgecolor='white',
+                    linewidth=0.5, label='Success %')
+    bars_c = ax.bar(x + w / 2, collision_rates, w, color='#e74c3c',
+                    edgecolor='white', linewidth=0.5, label='Collision %', alpha=0.45)
+
+    for bar, rate in zip(bars_s, success_rates):
+        if rate > 0:
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1,
+                    f'{rate:.1f}%', ha='center', va='bottom', fontsize=8, fontweight='bold')
+
+    for bar, rate in zip(bars_c, collision_rates):
+        if rate > 0:
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1,
+                    f'{rate:.0f}%', ha='center', va='bottom', fontsize=7, alpha=0.7)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, fontsize=7)
+    ax.set_xlabel('Spawn Position')
+    ax.set_ylabel('Rate (%)')
+    ax.set_title(f'Success vs Collision Rate by Spawn — Last {actual_n} Episodes' + title_suffix)
+    ax.set_ylim(0, 115)
+    ax.grid(True, alpha=0.3, axis='y')
+
+    legend_elements = [Patch(facecolor=LEVEL_COLORS[l], label=l) for l in LEVEL_ORDER]
+    legend_elements.append(Patch(facecolor='#e74c3c', alpha=0.45, label='Collision'))
+    ax.legend(handles=legend_elements, loc='upper right', fontsize=8)
+
+    plt.tight_layout()
+    fig.savefig(output_dir / f'{base_name}_11_spawn_bars_last{actual_n}.png', dpi=150, bbox_inches='tight')
+    print(f"  Saved: {base_name}_11_spawn_bars_last{actual_n}.png")
+    plt.close(fig)
 
 def plot_per_spawn_success_collision(df, spawn_info, metadata, output_dir, base_name, window=30):
     """Individual rolling success AND collision curve per spawn (dynamic grid)."""
@@ -656,10 +716,6 @@ def main():
 
     # Discover and classify spawns from data
     spawn_info = discover_spawns(df)
-    del spawn_info[1]
-    del spawn_info[7]
-    df = df[df['SpawnIdx'] != 1]
-    df = df[df['SpawnIdx'] != 7]
     print(f"\nDiscovered {len(spawn_info)} spawn positions:")
     for idx in sorted(spawn_info.keys()):
         info = spawn_info[idx]
@@ -682,6 +738,7 @@ def main():
     plot_cumulative(metrics, metadata, output_dir, base_name)
     plot_success_by_difficulty(df, spawn_info, metadata, output_dir, base_name, args.window)
     plot_spawn_bars(df, spawn_info, metadata, output_dir, base_name)
+    plot_spawn_bars_last_n(df, spawn_info, metadata, output_dir, base_name, n=500)
     plot_per_spawn_success_collision(df, spawn_info, metadata, output_dir, base_name,
                                      window=min(30, args.window))
     plot_full_maze_focus(df, spawn_info, metadata, output_dir, base_name)

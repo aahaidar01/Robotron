@@ -289,34 +289,34 @@ void log_lidar_state(int level)
     if (level == 1)
     {
         // Compact: L:10110 vis:1 dz:2 ts:3 dist:2.35
-        Serial.print("L:");
-        for (int i = 0; i < 5; i++) Serial.print(lidar_state[i]);
-        Serial.print(" vis:"); Serial.print(target_vis);
-        Serial.print(" dz:");  Serial.print(distance_zone);
-        Serial.print(" ts:");  Serial.print(target_sector);
-        Serial.print(" d:");   Serial.print(distance_to_target, 2);
+        logOut->print("L:");
+        for (int i = 0; i < 5; i++) logOut->print(lidar_state[i]);
+        logOut->print(" vis:"); logOut->print(target_vis);
+        logOut->print(" dz:");  logOut->print(distance_zone);
+        logOut->print(" ts:");  logOut->print(target_sector);
+        logOut->print(" d:");   logOut->print(distance_to_target, 2);
     }
     else
     {
         // Detailed multi-line
-        Serial.print("[LDR] sectors: ");
+        logOut->print("[LDR] sectors: ");
         for (int i = 0; i < 5; i++) {
-            Serial.print(lidar_state[i]);
-            Serial.print(" ");
+            logOut->print(lidar_state[i]);
+            logOut->print(" ");
         }
-        Serial.print("| mins(mm): ");
+        logOut->print("| mins(mm): ");
         for (int i = 0; i < 5; i++) {
-            Serial.print((int)sector_min_distance[i]);
-            Serial.print(" ");
+            logOut->print((int)sector_min_distance[i]);
+            logOut->print(" ");
         }
-        Serial.println();
+        logOut->println();
 
-        Serial.print("[LDR] vis:"); Serial.print(target_vis);
-        Serial.print(" dz:");  Serial.print(distance_zone);
-        Serial.print(" ts:");  Serial.print(target_sector);
-        Serial.print(" | dist:"); Serial.print(distance_to_target, 3);
-        Serial.print("m | tgt_ccw:"); Serial.print(target_angle_ccw_deg, 1);
-        Serial.print(" tgt_cw:"); Serial.print(lidar_target_angle, 1);
-        Serial.print(" | scans:"); Serial.println(scans_since_reset);
+        logOut->print("[LDR] vis:"); logOut->print(target_vis);
+        logOut->print(" dz:");  logOut->print(distance_zone);
+        logOut->print(" ts:");  logOut->print(target_sector);
+        logOut->print(" | dist:"); logOut->print(distance_to_target, 3);
+        logOut->print("m | tgt_ccw:"); logOut->print(target_angle_ccw_deg, 1);
+        logOut->print(" tgt_cw:"); logOut->print(lidar_target_angle, 1);
+        logOut->print(" | scans:"); logOut->println(scans_since_reset);
     }
 }

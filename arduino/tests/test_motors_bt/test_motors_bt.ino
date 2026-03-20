@@ -62,7 +62,7 @@ static constexpr float TARGET_OMEGA  = 0.50f;  // rad/s
 
 // Sweep configuration
 static constexpr int SWEEP_MIN  = 20;
-static constexpr int SWEEP_MAX  = 120;
+static constexpr int SWEEP_MAX  = 70;
 static constexpr int SWEEP_STEP = 10;
 
 // Timing (ms)
@@ -432,6 +432,15 @@ void runMode3(Print& out)
 // ================== SETUP & LOOP ==================
 void setup()
 {
+    // ========================================================
+    // 1. IMMEDIATELY LOCK DOWN MOTORS TO PREVENT BOOT SPIN
+    // ========================================================
+    pinMode(PWM_L, OUTPUT);
+    pinMode(DIR_L, OUTPUT);
+    pinMode(PWM_R, OUTPUT);
+    pinMode(DIR_R, OUTPUT);
+    setMotorPWMDIR(0, 0);
+    
     // USB serial for debug mirroring
     Serial.begin(115200);
     while (!Serial && millis() < 3000)
@@ -439,13 +448,6 @@ void setup()
 
     // HC-05 Bluetooth serial
     BT_SERIAL.begin(115200);
-
-    // Motor pins
-    pinMode(PWM_L, OUTPUT);
-    pinMode(DIR_L, OUTPUT);
-    pinMode(PWM_R, OUTPUT);
-    pinMode(DIR_R, OUTPUT);
-    setMotorPWMDIR(0, 0);
 
     // Encoder pins
     encL_A.mode(PullUp);
@@ -490,8 +492,8 @@ void loop()
     runMode1(BT_SERIAL);
     delay(3000);
     runMode2(BT_SERIAL);
-    delay(3000);
-    runMode3(BT_SERIAL);
+    // delay(3000);
+    // runMode3(BT_SERIAL);
 
     BT_SERIAL.println();
     BT_SERIAL.println("========================================");

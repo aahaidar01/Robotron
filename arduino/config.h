@@ -2,6 +2,8 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include <Arduino.h>
+
 // Logging verbosity (change this one number to control Serial output):
 //   0 = Silent   — only episode start/end messages
 //   1 = Summary  — one compact line per RL step (~5.5Hz)
@@ -24,5 +26,9 @@ const float TARGET_RADIUS = 0.30f;
 const float SPAWN_X   = -0.5f;
 const float SPAWN_Y   = -2.1f;
 const float SPAWN_YAW =  0.0f;   // radians, 0 = facing +X // we have to confirm with the IMU convention by testing
+
+// Global output stream — defaults to USB Serial, switches to
+// Ethernet client once connected. Defined in main.ino.
+extern Print* logOut;
 
 #endif
