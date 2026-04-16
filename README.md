@@ -3,7 +3,9 @@
 A physics-based extension of the VFH-QL algorithm (Abdalmanan et al., 2023) from 2D pixel simulation to Gazebo/ROS 2, with sim-to-real deployment on a physical DAGU Wild Thumper 4WD robot.
 
 **Imperial College London — MSc Applied Machine Learning / AML Devices Module Project**
+
 Authors: Ali Haidar, Andria Kyriacou, Mahmoud El Etreby
+
 Reference: Abdalmanan et al., *IEEE Access* (2023). DOI: [10.1109/ACCESS.2023.3265207](https://doi.org/10.1109/ACCESS.2023.3265207)
 
 ---
